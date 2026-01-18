@@ -1,65 +1,288 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { DragEndEvent } from "@dnd-kit/core";
+import ChecklistSection from "@/components/ChecklistSection";
+import KanbanBoard from "@/components/KanbanBoard";
+import StatusSettings from "@/components/StatusSettings";
+import AISuggestionModal from "@/components/AISuggestionModal";
+import { TaskTrailProvider } from "@/components/TaskTrailContext";
+import type { Status, Task } from "@/lib/types";
+import { ensureDefaultStatuses, createStatus, deleteStatus, updateStatus } from "@/lib/supabase/statuses";
+import { createTask, deleteTask, listTasksByDate, updateTask } from "@/lib/supabase/tasks";
+import { getActiveContainerId, reorder } from "@/lib/dnd";
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Home() {
+  const [selectedDate, setSelectedDate] = useState<string>(today());
+  const [statuses, setStatuses] = useState<Status[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newStatusName, setNewStatusName] = useState("");
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiInputText, setAiInputText] = useState("");
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiSelected, setAiSelected] = useState<Set<string>>(new Set());
+  const [isAiLoading, setIsAiLoading] = useState(false);
+
+  useEffect(() => {
+    const init = async () => {
+      const loadedStatuses = await ensureDefaultStatuses();
+      setStatuses(loadedStatuses);
+    };
+    void init();
+  }, []);
+
+  useEffect(() => {
+    const loadTasks = async () => {
+      const loadedTasks = await listTasksByDate(selectedDate);
+      setTasks(loadedTasks);
+    };
+    void loadTasks();
+  }, [selectedDate]);
+
+  const orderedStatuses = useMemo(() => [...statuses].sort((a, b) => a.order - b.order), [statuses]);
+
+  const primaryStatusId = orderedStatuses[0]?.id;
+
+  const handleAddTask = async () => {
+    const title = newTaskTitle.trim();
+    if (!title || !primaryStatusId) {
+      return;
+    }
+    const nextOrder = Math.max(0, ...tasks.filter((task) => task.statusId === primaryStatusId).map((task) => task.order)) + 1;
+    const created = await createTask({ title, statusId: primaryStatusId, date: selectedDate, order: nextOrder });
+    setTasks((prev) => [...prev, created]);
+    setNewTaskTitle("");
+  };
+
+  const handleTaskStatusChange = async (taskId: string, statusId: string) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) {
+      return;
+    }
+    const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === statusId).map((item) => item.order)) + 1;
+    const updated = await updateTask(taskId, { statusId, order: nextOrder });
+    setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    await deleteTask(taskId);
+    setTasks((prev) => prev.filter((task) => task.id !== taskId));
+  };
+
+  const handleTaskDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const activeTask = tasks.find((task) => task.id === active.id);
+    if (!activeTask) {
+      return;
+    }
+
+    const targetContainerId = getActiveContainerId(event);
+    if (!targetContainerId) {
+      return;
+    }
+
+    const targetTasks = tasks.filter((task) => task.statusId === targetContainerId).sort((a, b) => a.order - b.order);
+    const sourceTasks = tasks.filter((task) => task.statusId === activeTask.statusId).sort((a, b) => a.order - b.order);
+
+    const isSameContainer = activeTask.statusId === targetContainerId;
+
+    if (isSameContainer) {
+      const activeIndex = sourceTasks.findIndex((task) => task.id === active.id);
+      const rawOverIndex = sourceTasks.findIndex((task) => task.id === over.id);
+      const overIndex = rawOverIndex === -1 ? sourceTasks.length - 1 : rawOverIndex;
+      const reordered = reorder(sourceTasks, activeIndex, overIndex).map((task, index) => ({ ...task, order: index + 1 }));
+
+      setTasks((prev) =>
+        prev.map((task) => {
+          const updated = reordered.find((item) => item.id === task.id);
+          return updated ? updated : task;
+        })
+      );
+
+      await Promise.all(reordered.map((task) => updateTask(task.id, { order: task.order })));
+      return;
+    }
+
+    const overIndex = targetTasks.findIndex((task) => task.id === over.id);
+    const insertIndex = overIndex === -1 ? targetTasks.length : overIndex;
+    const updatedTarget = [...targetTasks];
+    updatedTarget.splice(insertIndex, 0, { ...activeTask, statusId: targetContainerId });
+
+    const normalizedTarget = updatedTarget.map((task, index) => ({ ...task, order: index + 1 }));
+    const normalizedSource = sourceTasks.filter((task) => task.id !== activeTask.id).map((task, index) => ({ ...task, order: index + 1 }));
+
+    setTasks((prev) =>
+      prev.map((task) => {
+        const updated = [...normalizedTarget, ...normalizedSource].find((item) => item.id === task.id);
+        return updated ? updated : task;
+      })
+    );
+
+    await Promise.all([
+      ...normalizedTarget.map((task) => updateTask(task.id, { statusId: task.statusId, order: task.order })),
+      ...normalizedSource.map((task) => updateTask(task.id, { order: task.order })),
+    ]);
+  };
+
+  const handleAddStatus = async () => {
+    const name = newStatusName.trim();
+    if (!name) {
+      return;
+    }
+    const nextOrder = Math.max(0, ...statuses.map((status) => status.order)) + 1;
+    const created = await createStatus({ name, order: nextOrder });
+    setStatuses((prev) => [...prev, created]);
+    setNewStatusName("");
+  };
+
+  const handleRenameStatus = async (statusId: string, name: string) => {
+    const updated = await updateStatus(statusId, { name });
+    setStatuses((prev) => prev.map((status) => (status.id === statusId ? updated : status)));
+  };
+
+  const handleDeleteStatus = async (statusId: string) => {
+    const remainingStatuses = statuses.filter((status) => status.id !== statusId);
+    await deleteStatus(statusId);
+    await Promise.all(tasks.filter((task) => task.statusId === statusId).map((task) => deleteTask(task.id)));
+    setStatuses(remainingStatuses);
+    setTasks((prev) => prev.filter((task) => task.statusId !== statusId));
+  };
+
+  const handleStatusDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const activeIndex = orderedStatuses.findIndex((status) => status.id === active.id);
+    const overIndex = orderedStatuses.findIndex((status) => status.id === over.id);
+    const reordered = reorder(orderedStatuses, activeIndex, overIndex).map((status, index) => ({
+      ...status,
+      order: index + 1,
+    }));
+
+    setStatuses(reordered);
+    await Promise.all(reordered.map((status) => updateStatus(status.id, { order: status.order })));
+  };
+
+  const handleOpenAiModal = () => {
+    setIsAiModalOpen(true);
+    setAiSelected(new Set());
+  };
+
+  const handleCloseAiModal = () => {
+    setIsAiModalOpen(false);
+    setAiSuggestions([]);
+    setAiSelected(new Set());
+    setAiInputText("");
+  };
+
+  const handleToggleSuggestion = (task: string) => {
+    setAiSelected((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(task)) {
+        updated.delete(task);
+      } else {
+        updated.add(task);
+      }
+      return updated;
+    });
+  };
+
+  const handleFetchSuggestions = async () => {
+    if (!aiInputText.trim()) {
+      return;
+    }
+    setIsAiLoading(true);
+    try {
+      const response = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiInputText }),
+      });
+      const data = (await response.json()) as { tasks?: string[] };
+      const suggestions = data.tasks ?? [];
+      setAiSuggestions(suggestions);
+      setAiSelected(new Set(suggestions));
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleCreateSuggestedTasks = async () => {
+    if (!primaryStatusId) {
+      return;
+    }
+    const selectedTasks = Array.from(aiSelected);
+    if (selectedTasks.length === 0) {
+      return;
+    }
+    const baseOrder = Math.max(0, ...tasks.filter((task) => task.statusId === primaryStatusId).map((task) => task.order));
+    const createdTasks = await Promise.all(
+      selectedTasks.map((title, index) => createTask({ title, statusId: primaryStatusId, date: selectedDate, order: baseOrder + index + 1 }))
+    );
+    setTasks((prev) => [...prev, ...createdTasks]);
+    handleCloseAiModal();
+  };
+
+  const contextValue = {
+    selectedDate,
+    setSelectedDate,
+    statuses: orderedStatuses,
+    tasks,
+    newTaskTitle,
+    setNewTaskTitle,
+    newStatusName,
+    setNewStatusName,
+    addTask: handleAddTask,
+    changeTaskStatus: handleTaskStatusChange,
+    deleteTaskById: handleDeleteTask,
+    handleTaskDragEnd,
+    addStatus: handleAddStatus,
+    renameStatus: handleRenameStatus,
+    deleteStatusById: handleDeleteStatus,
+    handleStatusDragEnd,
+    isAiModalOpen,
+    openAiModal: handleOpenAiModal,
+    closeAiModal: handleCloseAiModal,
+    aiInputText,
+    setAiInputText,
+    aiSuggestions,
+    aiSelected,
+    isAiLoading,
+    toggleSuggestion: handleToggleSuggestion,
+    fetchSuggestions: handleFetchSuggestions,
+    createSuggestedTasks: handleCreateSuggestedTasks,
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <TaskTrailProvider value={contextValue}>
+      <div className="min-h-screen bg-white text-neutral-900">
+        <div className="absolute inset-0 bg-transparent" />
+        <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10">
+          <header className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="text-sm text-neutral-500">Task Trail</p>
+              <h1 className="text-3xl font-semibold">Choreograph the day</h1>
+              <p className="text-sm text-neutral-600">Checklist precision with kanban flow and AI momentum.</p>
+            </div>
+            <div className="rounded border border-neutral-300 px-3 py-1 text-sm text-neutral-600">{selectedDate}</div>
+          </header>
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_1.4fr]">
+            <ChecklistSection />
+            <KanbanBoard />
+          </div>
+          <StatusSettings />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        <AISuggestionModal />
+      </div>
+    </TaskTrailProvider>
   );
 }

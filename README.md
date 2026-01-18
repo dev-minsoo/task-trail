@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Task Trail
+
+Task Trail is a personal checklist app with date-based task views, a lightweight kanban board, customizable statuses, and AI-assisted task suggestions.
+
+## Features
+
+- Date-based checklist view
+- Kanban board with drag-and-drop
+- Custom status columns with reordering
+- AI task suggestion (optional)
+
+## Tech Stack
+
+- Next.js (App Router)
+- Supabase (Postgres)
+- Tailwind CSS
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Create a Supabase project.
+2. Go to **Settings → API** and copy:
+   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
+   - `anon public key` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Add the values to `.env.local`:
 
-## Learn More
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+OPENAI_API_KEY=sk-your-openai-key
+```
 
-To learn more about Next.js, take a look at the following resources:
+4. Create tables in **SQL Editor**:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sql
+create table if not exists statuses (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  "order" integer not null,
+  created_at timestamptz not null default now()
+);
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  status_id uuid not null references statuses(id) on delete cascade,
+  date text not null,
+  "order" integer not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
 
-## Deploy on Vercel
+create index if not exists tasks_date_idx on tasks(date);
+create index if not exists tasks_status_idx on tasks(status_id);
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The app auto-seeds default statuses (`To Do`, `In Progress`, `Done`) when the table is empty.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## AI Suggestions
+
+Set `OPENAI_API_KEY` in `.env.local` to enable AI task suggestions. Leave it blank if you do not plan to use AI features.
+
+## Deploy to Vercel
+
+1. Push your repo to GitHub.
+2. Import the project in Vercel.
+3. Add the same environment variables in Vercel:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `OPENAI_API_KEY` (optional)
+4. Deploy.
