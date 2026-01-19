@@ -2,57 +2,51 @@
 
 import Link from "next/link";
 import { Settings } from "lucide-react";
-import ChecklistSection from "@/components/ChecklistSection";
-import KanbanBoard from "@/components/KanbanBoard";
-import AISuggestionModal from "@/components/AISuggestionModal";
+import StatusSettings from "@/components/StatusSettings";
 import TaskTrailShell from "@/components/TaskTrailShell";
 import { useTaskTrail } from "@/components/TaskTrailContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-function HomeContent() {
+function SettingsContent() {
   const { selectedDate } = useTaskTrail();
 
   return (
     <div className="min-h-screen bg-slate-50 text-neutral-900">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.25),_transparent_55%)]" />
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10">
+      <div className="relative mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-10">
         <header className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-sm backdrop-blur">
-          <div className="max-w-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Task Trail</p>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Choreograph the day</h1>
-            <p className="mt-2 text-sm text-slate-600">Checklist precision with kanban flow and AI momentum.</p>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Settings</p>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Refine your statuses</h1>
+            <p className="mt-2 text-sm text-slate-600">Tune columns for the day without leaving your flow.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Badge className="rounded-full px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
               {selectedDate}
             </Badge>
-            <Link href="/settings">
+            <Link href="/">
               <Button
                 size="icon"
                 variant="outline"
-                aria-label="Open settings"
+                aria-label="Back to board"
                 className="rounded-full text-slate-600 shadow-sm transition hover:border-slate-300"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="h-4 w-4 rotate-180" />
               </Button>
             </Link>
           </div>
         </header>
-        <div className="grid gap-6 lg:grid-cols-[1.1fr_1.4fr]">
-          <ChecklistSection />
-          <KanbanBoard />
-        </div>
+        <StatusSettings />
       </div>
-      <AISuggestionModal />
     </div>
   );
 }
 
-export default function Home() {
+export default function SettingsPage() {
   return (
     <TaskTrailShell>
-      <HomeContent />
+      <SettingsContent />
     </TaskTrailShell>
   );
 }

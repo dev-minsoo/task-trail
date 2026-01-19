@@ -1,8 +1,13 @@
+"use client";
+
 import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Status, Task } from "@/lib/types";
 import { useTaskTrail } from "@/components/TaskTrailContext";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -14,11 +19,13 @@ function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded border border-neutral-200 px-3 py-2 text-sm ${isDragging ? "opacity-60" : "opacity-100"}`}
+      className={`rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 ${
+        isDragging ? "opacity-60" : "opacity-100"
+      }`}
       {...attributes}
       {...listeners}
     >
-      {task.title}
+      <span className="font-medium text-slate-900">{task.title}</span>
     </div>
   );
 }
@@ -32,15 +39,21 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
   const orderedTasks = [...tasks].sort((a, b) => a.order - b.order);
 
   return (
-    <div className={`flex min-h-[240px] flex-col gap-3 rounded border p-3 ${isOver ? "border-neutral-400" : "border-neutral-200"}`}>
+    <div
+      className={`flex min-h-[260px] flex-col gap-3 rounded-2xl border bg-white/80 p-4 shadow-sm transition ${
+        isOver ? "border-slate-400" : "border-slate-200"
+      }`}
+    >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">{status.name}</h3>
-        <span className="text-sm text-neutral-500">{orderedTasks.length} cards</span>
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">{status.name}</h3>
+          <span className="text-xs uppercase tracking-wide text-slate-500">{orderedTasks.length} cards</span>
+        </div>
       </div>
       <SortableContext items={orderedTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="flex flex-1 flex-col gap-2">
           {orderedTasks.length === 0 ? (
-            <div className="rounded border border-dashed border-neutral-300 px-3 py-6 text-sm text-neutral-500">
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-sm text-slate-500">
               Drop tasks here
             </div>
           ) : (
@@ -57,21 +70,28 @@ export default function KanbanBoard() {
   const orderedStatuses = [...statuses].sort((a, b) => a.order - b.order);
 
   return (
-    <section className="rounded border border-neutral-200 bg-white p-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-neutral-500">Kanban</p>
-          <h2 className="text-lg font-semibold">Flow across statuses</h2>
-          <p className="text-sm text-neutral-600">Drag cards to reorder or change status.</p>
+    <Card className="rounded-2xl border-slate-200 bg-white">
+      <CardHeader className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Badge className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Kanban
+            </Badge>
+            <h2 className="mt-3 text-xl font-semibold text-slate-900">Flow across statuses</h2>
+            <p className="mt-1 text-sm text-slate-600">Drag cards to reorder or change status.</p>
+          </div>
         </div>
-      </div>
-      <DndContext collisionDetection={closestCenter} onDragEnd={(event) => void handleTaskDragEnd(event)}>
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          {orderedStatuses.map((status) => (
-            <StatusColumn key={status.id} status={status} tasks={tasks.filter((task) => task.statusId === status.id)} />
-          ))}
-        </div>
-      </DndContext>
-    </section>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <Separator className="bg-slate-100" />
+        <DndContext collisionDetection={closestCenter} onDragEnd={(event) => void handleTaskDragEnd(event)}>
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {orderedStatuses.map((status) => (
+              <StatusColumn key={status.id} status={status} tasks={tasks.filter((task) => task.statusId === status.id)} />
+            ))}
+          </div>
+        </DndContext>
+      </CardContent>
+    </Card>
   );
 }
