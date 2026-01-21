@@ -5,10 +5,13 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { TaskTrailProvider } from "@/components/TaskTrailContext";
 import type { Status, Task } from "@/lib/types";
 import { ensureDefaultStatuses, createStatus, deleteStatus, updateStatus } from "@/lib/supabase/statuses";
-import { createTask, deleteTask, listTasksByDate, updateTask } from "@/lib/supabase/tasks";
+import { createTask, deleteTask, listTasks, updateTask } from "@/lib/supabase/tasks";
 import { getActiveContainerId, reorder } from "@/lib/dnd";
 
 const today = () => new Date().toISOString().slice(0, 10);
+const STATUS_INBOX = "Inbox";
+const STATUS_IN_PROGRESS = "In Progress";
+const STATUS_DONE = "Done";
 
 export default function TaskTrailShell({ children }: { children: React.ReactNode }) {
   const [selectedDate, setSelectedDate] = useState<string>(today());
@@ -22,33 +25,79 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   const [aiSelected, setAiSelected] = useState<Set<string>>(new Set());
   const [isAiLoading, setIsAiLoading] = useState(false);
 
+  const orderedStatuses = useMemo(() => [...statuses].sort((a, b) => a.order - b.order), [statuses]);
+  const statusByName = useMemo(
+    () => new Map(orderedStatuses.map((status) => [status.name.toLowerCase(), status.id])),
+    [orderedStatuses]
+  );
+  const inboxStatusId = statusByName.get(STATUS_INBOX.toLowerCase());
+  const inProgressStatusId = statusByName.get(STATUS_IN_PROGRESS.toLowerCase());
+  const doneStatusId = statusByName.get(STATUS_DONE.toLowerCase());
+  const primaryStatusId = inboxStatusId ?? orderedStatuses[0]?.id;
+
+  const resolveDateForStatus = (statusId: string, currentDate: string) => {
+    if (statusId === inboxStatusId) {
+      return "";
+    }
+    if (statusId === inProgressStatusId) {
+      return currentDate || selectedDate;
+    }
+    return currentDate;
+  };
+
+  const normalizeTasks = async (loadedTasks: Task[], loadedStatuses: Status[]) => {
+    const allowedNames = new Set([
+      STATUS_INBOX.toLowerCase(),
+      STATUS_IN_PROGRESS.toLowerCase(),
+      STATUS_DONE.toLowerCase(),
+    ]);
+    const allowedStatuses = loadedStatuses.filter((status) => allowedNames.has(status.name.toLowerCase()));
+    const allowedIds = new Set(allowedStatuses.map((status) => status.id));
+    const fallbackStatusId = allowedStatuses.find((status) => status.name === STATUS_INBOX)?.id;
+
+    if (!fallbackStatusId) {
+      return loadedTasks;
+    }
+
+    const invalidTasks = loadedTasks.filter((task) => !allowedIds.has(task.statusId));
+    if (invalidTasks.length === 0) {
+      return loadedTasks;
+    }
+
+    await Promise.all(
+      invalidTasks.map((task) =>
+        updateTask(task.id, {
+          statusId: fallbackStatusId,
+          date: "",
+        })
+      )
+    );
+
+    return loadedTasks.map((task) =>
+      allowedIds.has(task.statusId) ? task : { ...task, statusId: fallbackStatusId, date: "" }
+    );
+  };
+
   useEffect(() => {
     const init = async () => {
       const loadedStatuses = await ensureDefaultStatuses();
       setStatuses(loadedStatuses);
+      const loadedTasks = await listTasks();
+      const normalizedTasks = await normalizeTasks(loadedTasks, loadedStatuses);
+      setTasks(normalizedTasks);
     };
     void init();
   }, []);
 
-  useEffect(() => {
-    const loadTasks = async () => {
-      const loadedTasks = await listTasksByDate(selectedDate);
-      setTasks(loadedTasks);
-    };
-    void loadTasks();
-  }, [selectedDate]);
-
-  const orderedStatuses = useMemo(() => [...statuses].sort((a, b) => a.order - b.order), [statuses]);
-
-  const primaryStatusId = orderedStatuses[0]?.id;
-
-  const handleAddTask = async () => {
-    const title = newTaskTitle.trim();
-    if (!title || !primaryStatusId) {
+  const handleAddTask = async (overrides?: { title?: string; statusId?: string; date?: string }) => {
+    const title = (overrides?.title ?? newTaskTitle).trim();
+    const statusId = overrides?.statusId ?? primaryStatusId;
+    if (!title || !statusId) {
       return;
     }
-    const nextOrder = Math.max(0, ...tasks.filter((task) => task.statusId === primaryStatusId).map((task) => task.order)) + 1;
-    const created = await createTask({ title, statusId: primaryStatusId, date: selectedDate, order: nextOrder });
+    const date = resolveDateForStatus(statusId, overrides?.date ?? selectedDate);
+    const nextOrder = Math.max(0, ...tasks.filter((task) => task.statusId === statusId).map((task) => task.order)) + 1;
+    const created = await createTask({ title, statusId, date, order: nextOrder });
     setTasks((prev) => [...prev, created]);
     setNewTaskTitle("");
   };
@@ -58,8 +107,9 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     if (!task) {
       return;
     }
+    const resolvedDate = resolveDateForStatus(statusId, task.date);
     const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === statusId).map((item) => item.order)) + 1;
-    const updated = await updateTask(taskId, { statusId, order: nextOrder });
+    const updated = await updateTask(taskId, { statusId, order: nextOrder, date: resolvedDate });
     setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
   };
 
@@ -109,7 +159,8 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     const overIndex = targetTasks.findIndex((task) => task.id === over.id);
     const insertIndex = overIndex === -1 ? targetTasks.length : overIndex;
     const updatedTarget = [...targetTasks];
-    updatedTarget.splice(insertIndex, 0, { ...activeTask, statusId: targetContainerId });
+    const nextDate = resolveDateForStatus(targetContainerId, activeTask.date);
+    updatedTarget.splice(insertIndex, 0, { ...activeTask, statusId: targetContainerId, date: nextDate });
 
     const normalizedTarget = updatedTarget.map((task, index) => ({ ...task, order: index + 1 }));
     const normalizedSource = sourceTasks.filter((task) => task.id !== activeTask.id).map((task, index) => ({ ...task, order: index + 1 }));
@@ -122,9 +173,30 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     );
 
     await Promise.all([
-      ...normalizedTarget.map((task) => updateTask(task.id, { statusId: task.statusId, order: task.order })),
+      ...normalizedTarget.map((task) => updateTask(task.id, { statusId: task.statusId, order: task.order, date: task.date })),
       ...normalizedSource.map((task) => updateTask(task.id, { order: task.order })),
     ]);
+  };
+
+  const handleToggleTaskDone = async (taskId: string) => {
+    if (!doneStatusId) {
+      return;
+    }
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) {
+      return;
+    }
+    const fallbackStatusId = inProgressStatusId ?? inboxStatusId;
+    if (!fallbackStatusId) {
+      return;
+    }
+
+    const isDone = task.statusId === doneStatusId;
+    const nextStatusId = isDone ? fallbackStatusId : doneStatusId;
+    const resolvedDate = isDone ? resolveDateForStatus(nextStatusId, task.date) : task.date;
+    const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === nextStatusId).map((item) => item.order)) + 1;
+    const updated = await updateTask(taskId, { statusId: nextStatusId, order: nextOrder, date: resolvedDate });
+    setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
   };
 
   const handleAddStatus = async () => {
@@ -222,7 +294,14 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     }
     const baseOrder = Math.max(0, ...tasks.filter((task) => task.statusId === primaryStatusId).map((task) => task.order));
     const createdTasks = await Promise.all(
-      selectedTasks.map((title, index) => createTask({ title, statusId: primaryStatusId, date: selectedDate, order: baseOrder + index + 1 }))
+      selectedTasks.map((title, index) =>
+        createTask({
+          title,
+          statusId: primaryStatusId,
+          date: resolveDateForStatus(primaryStatusId, selectedDate),
+          order: baseOrder + index + 1,
+        })
+      )
     );
     setTasks((prev) => [...prev, ...createdTasks]);
     handleCloseAiModal();
@@ -240,6 +319,7 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     addTask: handleAddTask,
     changeTaskStatus: handleTaskStatusChange,
     deleteTaskById: handleDeleteTask,
+    toggleTaskDone: handleToggleTaskDone,
     handleTaskDragEnd,
     addStatus: handleAddStatus,
     renameStatus: handleRenameStatus,

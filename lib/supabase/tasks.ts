@@ -48,6 +48,27 @@ export async function listTasksByDate(date: string): Promise<Task[]> {
   );
 }
 
+export async function listTasks(): Promise<Task[]> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.from(TABLE_NAME).select("*").order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) =>
+    mapTask(row as {
+      id: string;
+      title: string;
+      status_id: string;
+      date: string;
+      order: number;
+      created_at: string;
+      updated_at: string;
+    })
+  );
+}
+
 export async function createTask(input: Omit<Task, "id" | "createdAt" | "updatedAt">): Promise<Task> {
   const client = getSupabaseClient();
   const { data, error } = await client

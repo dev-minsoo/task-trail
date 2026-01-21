@@ -3,11 +3,48 @@
 import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Status, Task } from "@/lib/types";
-import { useTaskTrail } from "@/components/TaskTrailContext";
+import type { DragEndEvent } from "@dnd-kit/core";
+import type { ReactNode } from "react";
+import { Inbox, ListTodo, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import type { Status, Task } from "@/lib/types";
+
+interface KanbanBoardProps {
+  statuses: Status[];
+  tasks: Task[];
+  onTaskDragEnd: (event: DragEndEvent) => void;
+}
+
+const columnStyles: Record<
+  string,
+  {
+    icon: ReactNode;
+    accent: string;
+    softBg: string;
+    badge: string;
+  }
+> = {
+  inbox: {
+    icon: <Inbox className="h-4 w-4" />,
+    accent: "from-slate-500 to-slate-600",
+    softBg: "bg-slate-50",
+    badge: "bg-slate-100 text-slate-600",
+  },
+  "in progress": {
+    icon: <ListTodo className="h-4 w-4" />,
+    accent: "from-sky-500 to-cyan-500",
+    softBg: "bg-sky-50",
+    badge: "bg-sky-100 text-sky-700",
+  },
+  done: {
+    icon: <CheckCircle2 className="h-4 w-4" />,
+    accent: "from-emerald-500 to-teal-500",
+    softBg: "bg-emerald-50",
+    badge: "bg-emerald-100 text-emerald-700",
+  },
+};
 
 function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -16,17 +53,21 @@ function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
   });
 
   return (
-    <div
+    <Card
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 ${
-        isDragging ? "opacity-60" : "opacity-100"
-      }`}
+      className={cn(
+        "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50",
+        isDragging && "opacity-60"
+      )}
       {...attributes}
       {...listeners}
     >
-      <span className="font-medium text-slate-900">{task.title}</span>
-    </div>
+      <p className="font-medium text-slate-900">{task.title}</p>
+      <Badge className="mt-2 w-fit rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        {task.date || "No date"}
+      </Badge>
+    </Card>
   );
 }
 
@@ -36,62 +77,54 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
     data: { containerId: status.id, type: "column" },
   });
 
+  const tone = columnStyles[status.name.toLowerCase()] ?? columnStyles.inbox;
   const orderedTasks = [...tasks].sort((a, b) => a.order - b.order);
 
   return (
-    <div
-      className={`flex min-h-[260px] flex-col gap-3 rounded-2xl border bg-white/80 p-4 shadow-sm transition ${
-        isOver ? "border-slate-400" : "border-slate-200"
-      }`}
+    <Card
+      className={cn(
+        "flex min-h-[320px] flex-col gap-4 rounded-3xl border p-5 shadow-sm transition",
+        isOver ? "border-slate-400" : "border-slate-200",
+        tone.softBg
+      )}
     >
       <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900">{status.name}</h3>
-          <span className="text-xs uppercase tracking-wide text-slate-500">{orderedTasks.length} cards</span>
+        <div className="flex items-center gap-3">
+          <div className={cn("rounded-xl bg-gradient-to-br p-2 text-white shadow", tone.accent)}>{tone.icon}</div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">{status.name}</h3>
+            <p className="text-xs text-slate-500">{orderedTasks.length} tasks</p>
+          </div>
         </div>
+        <Badge className={cn("rounded-full px-2 py-1 text-[10px] font-semibold uppercase", tone.badge)}>
+          {status.order}
+        </Badge>
       </div>
       <SortableContext items={orderedTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
-        <div ref={setNodeRef} className="flex flex-1 flex-col gap-2">
+        <div ref={setNodeRef} className="flex flex-1 flex-col gap-3">
           {orderedTasks.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-sm text-slate-500">
-              Drop tasks here
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-400">
+              Drag tasks here
             </div>
           ) : (
             orderedTasks.map((task) => <TaskCard key={task.id} task={task} statusId={status.id} />)
           )}
         </div>
       </SortableContext>
-    </div>
+    </Card>
   );
 }
 
-export default function KanbanBoard() {
-  const { statuses, tasks, handleTaskDragEnd } = useTaskTrail();
+export default function KanbanBoard({ statuses, tasks, onTaskDragEnd }: KanbanBoardProps) {
   const orderedStatuses = [...statuses].sort((a, b) => a.order - b.order);
 
   return (
-    <Card className="rounded-2xl border-slate-200 bg-white">
-      <CardHeader className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Badge className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Kanban
-            </Badge>
-            <h2 className="mt-3 text-xl font-semibold text-slate-900">Flow across statuses</h2>
-            <p className="mt-1 text-sm text-slate-600">Drag cards to reorder or change status.</p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
-        <Separator className="bg-slate-100" />
-        <DndContext collisionDetection={closestCenter} onDragEnd={(event) => void handleTaskDragEnd(event)}>
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            {orderedStatuses.map((status) => (
-              <StatusColumn key={status.id} status={status} tasks={tasks.filter((task) => task.statusId === status.id)} />
-            ))}
-          </div>
-        </DndContext>
-      </CardContent>
-    </Card>
+    <DndContext collisionDetection={closestCenter} onDragEnd={onTaskDragEnd}>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {orderedStatuses.map((status) => (
+          <StatusColumn key={status.id} status={status} tasks={tasks.filter((task) => task.statusId === status.id)} />
+        ))}
+      </div>
+    </DndContext>
   );
 }

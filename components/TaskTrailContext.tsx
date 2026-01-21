@@ -13,9 +13,10 @@ export type TaskTrailContextValue = {
   setNewTaskTitle: (value: string) => void;
   newStatusName: string;
   setNewStatusName: (value: string) => void;
-  addTask: () => Promise<void>;
+  addTask: (overrides?: { title?: string; statusId?: string; date?: string }) => Promise<void>;
   changeTaskStatus: (taskId: string, statusId: string) => Promise<void>;
   deleteTaskById: (taskId: string) => Promise<void>;
+  toggleTaskDone: (taskId: string) => Promise<void>;
   handleTaskDragEnd: (event: DragEndEvent) => Promise<void>;
   addStatus: () => Promise<void>;
   renameStatus: (statusId: string, name: string) => Promise<void>;
