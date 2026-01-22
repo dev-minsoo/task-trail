@@ -1,21 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { LayoutGrid, LayoutList } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import AISuggestionModal from "@/components/AISuggestionModal";
 import ChatInput from "@/components/ChatInput";
 import KanbanBoard from "@/components/KanbanBoard";
 import Sidebar from "@/components/Sidebar";
+import TaskHeader from "@/components/TaskHeader";
+import TopActions, { type ThemeMode, type ViewMode } from "@/components/TopActions";
 import TodoList from "@/components/TodoList";
 import TaskTrailShell from "@/components/TaskTrailShell";
 import { useTaskTrail } from "@/components/TaskTrailContext";
-
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import type { Status } from "@/lib/types";
-
-type ViewMode = "list" | "kanban";
 
 function HomeContent() {
   const {
@@ -29,11 +24,26 @@ function HomeContent() {
     handleTaskDragEnd,
     openAiModal,
     selectedDate,
-    setSelectedDate,
   } = useTaskTrail();
 
   const [activeView, setActiveView] = useState<ViewMode>("list");
   const [activeListStatus, setActiveListStatus] = useState("inbox");
+  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+
+  const applyTheme = (nextTheme: ThemeMode) => {
+    const root = document.documentElement;
+    root.classList.toggle("dark", nextTheme === "dark");
+    localStorage.setItem("theme", nextTheme);
+    setThemeMode(nextTheme);
+  };
+
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("theme");
+    const resolvedTheme = storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const initialTheme: ThemeMode = resolvedTheme ?? (prefersDark ? "dark" : "light");
+    applyTheme(initialTheme);
+  }, []);
 
   const commandOptions = useMemo(
     () => [
@@ -76,21 +86,6 @@ function HomeContent() {
     { key: "in progress", label: "In Progress" },
     { key: "done", label: "Done" },
   ];
-
-  const listTabStyles: Record<string, { active: string; pill: string }> = {
-    inbox: {
-      active: "bg-slate-100 text-slate-900 border border-slate-200 hover:bg-slate-200",
-      pill: "bg-slate-900/10 text-slate-800",
-    },
-    "in progress": {
-      active: "bg-sky-100 text-sky-900 border border-sky-200 hover:bg-sky-200",
-      pill: "bg-sky-200/70 text-sky-900",
-    },
-    done: {
-      active: "bg-emerald-100 text-emerald-900 border border-emerald-200 hover:bg-emerald-200",
-      pill: "bg-emerald-200/70 text-emerald-900",
-    },
-  };
 
   const allTasks = useMemo(() => {
     return [...tasks].sort((a, b) => {
@@ -190,7 +185,7 @@ function HomeContent() {
     }
 
     const shouldFilterByDate = activeListStatus !== "inbox";
-    return allTasks.filter((task) => {
+    const filtered = allTasks.filter((task) => {
       if (task.statusId !== statusId) {
         return false;
       }
@@ -199,88 +194,35 @@ function HomeContent() {
       }
       return task.date === selectedDate;
     });
+    return filtered.sort((a, b) => {
+      const aTime = new Date(shouldFilterByDate ? a.updatedAt : a.createdAt).getTime();
+      const bTime = new Date(shouldFilterByDate ? b.updatedAt : b.createdAt).getTime();
+      return bTime - aTime;
+    });
   }, [activeListStatus, activeView, allTasks, selectedDate, statusByName]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar />
       <div className="flex h-screen flex-1 flex-col overflow-hidden">
-        <div className="relative flex-1 min-h-0">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.25),_transparent_55%)]" />
+        <div className="relative flex-1 min-h-0 bg-background">
           <div className="absolute right-6 top-6 z-20">
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 p-1 shadow-sm backdrop-blur">
-              <Button
-                type="button"
-                variant={activeView === "list" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveView("list")}
-                className="gap-2 rounded-full px-4"
-              >
-                <LayoutList className="h-4 w-4" />
-                List
-              </Button>
-              <Button
-                type="button"
-                variant={activeView === "kanban" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setActiveView("kanban")}
-                className="gap-2 rounded-full px-4"
-              >
-                <LayoutGrid className="h-4 w-4" />
-                Board
-              </Button>
-            </div>
+            <TopActions
+              activeView={activeView}
+              onViewChangeAction={setActiveView}
+              themeMode={themeMode}
+              onToggleThemeAction={() => applyTheme(themeMode === "dark" ? "light" : "dark")}
+            />
           </div>
-          <div className="relative h-full overflow-y-auto">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pb-28 pt-20">
+          <div className="relative h-full overflow-y-auto [scrollbar-gutter:stable]">
+            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pb-20 pt-6">
               {activeView === "list" && (
-                <Card className="rounded-3xl border-slate-200 bg-white/90 p-3 shadow-lg backdrop-blur">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {listTabs.map((tab) => (
-                        <Button
-                          key={tab.key}
-                          type="button"
-                          variant={activeListStatus === tab.key ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => setActiveListStatus(tab.key)}
-                          className={`rounded-full px-4 transition-colors ${
-                            activeListStatus === tab.key
-                              ? listTabStyles[tab.key]?.active ?? "bg-slate-100 text-slate-900"
-                              : "text-slate-600 hover:bg-slate-100"
-                          }`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <span>{tab.label}</span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] ${
-                                activeListStatus === tab.key
-                                  ? listTabStyles[tab.key]?.pill ?? "bg-slate-900/10 text-slate-800"
-                                  : "bg-slate-200/80 text-slate-500"
-                              }`}
-                            >
-                              {listTabCounts[tab.key] ?? 0}
-                            </span>
-                          </span>
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 shadow-sm">
-                        <span>Date</span>
-                        <Input
-                          type="date"
-                          value={selectedDate}
-                          onChange={(event) => setSelectedDate(event.target.value)}
-                          className="h-7 w-[140px] border-none bg-transparent p-0 text-[11px] font-semibold text-slate-700 focus-visible:ring-0 focus-visible:ring-offset-0"
-                        />
-                      </label>
-                      <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 shadow-sm">
-                        {activeTasks.length} tasks
-                      </div>
-                    </div>
-                  </div>
-                </Card>
+                <TaskHeader
+                  tabs={listTabs}
+                  activeTab={activeListStatus}
+                  counts={listTabCounts}
+                  onTabChangeAction={setActiveListStatus}
+                />
               )}
 
               {activeView === "list" ? (
@@ -307,7 +249,7 @@ function HomeContent() {
           onCommandSelect={(command) => setNewTaskTitle(`${command} `)}
           showCommandError={showCommandError}
           onAiClick={openAiModal}
-          className="sticky bottom-4"
+          className="sticky bottom-4 pr-[15px]"
         />
       </div>
 

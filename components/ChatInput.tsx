@@ -38,7 +38,10 @@ export default function ChatInput({
   className,
 }: ChatInputProps) {
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey && !event.repeat) {
       event.preventDefault();
       onSubmit();
     }
@@ -50,18 +53,18 @@ export default function ChatInput({
 
   return (
     <div className={cn("bg-transparent", className)}>
-      <div className="mx-auto w-full max-w-5xl px-6 pb-4">
+      <div className="mx-auto w-full max-w-6xl px-6">
         <div className="relative overflow-visible">
-          <div className="pointer-events-none absolute -inset-0.5 rounded-3xl bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 opacity-20 blur" />
+          <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 opacity-20 blur" />
 
-          <Card className="relative rounded-3xl border-slate-200 bg-white/95 shadow-xl backdrop-blur transition focus-within:border-transparent focus-within:ring-2 focus-within:ring-sky-400">
+          <Card className="relative rounded-3xl border-border bg-card/95 shadow-xl backdrop-blur transition focus-within:border-transparent focus-within:ring-2 focus-within:ring-sky-400">
             <Textarea
               value={value}
               onChange={(event) => onChange(event.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               className={cn(
-                "min-h-[56px] resize-none rounded-3xl border-0 bg-transparent px-5 py-3 text-base text-slate-700 focus-visible:ring-0",
+                "min-h-[56px] resize-none rounded-3xl border-0 bg-transparent px-5 py-3 text-base text-foreground focus-visible:ring-0",
                 hasAiAction ? "pr-32" : "pr-20"
               )}
             />
@@ -71,7 +74,7 @@ export default function ChatInput({
                   type="button"
                   variant="outline"
                   onClick={onAiClick}
-                  className="h-9 gap-2 rounded-2xl px-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600"
+                  className="h-9 gap-2 rounded-2xl px-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
                 >
                   <Sparkles className="h-4 w-4 text-sky-500" />
                   AI Spark
@@ -86,7 +89,7 @@ export default function ChatInput({
                   "h-9 w-9 rounded-2xl transition",
                   trimmedValue
                     ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-lg hover:from-sky-600 hover:via-cyan-600 hover:to-emerald-600"
-                    : "bg-slate-200 text-slate-400"
+                    : "bg-muted text-muted-foreground"
                 )}
               >
                 <Send className="h-4 w-4" />
@@ -95,16 +98,16 @@ export default function ChatInput({
           </Card>
 
           {showAutocomplete && commands.length > 0 && (
-            <div className="absolute bottom-full left-0 right-0 z-30 mb-3 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+            <div className="absolute bottom-full left-0 right-0 z-30 mb-3 max-h-56 overflow-y-auto rounded-2xl border border-border bg-card p-2 shadow-xl">
               {commands.map((option) => (
                 <button
                   key={option.command}
                   type="button"
                   onClick={() => onCommandSelect?.(option.command)}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
-                  <span className="font-semibold text-slate-900">{option.command}</span>
-                  <span className="text-[11px] uppercase tracking-wide text-slate-400">{option.label}</span>
+                  <span className="font-semibold text-foreground">{option.command}</span>
+                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{option.label}</span>
                 </button>
               ))}
             </div>
@@ -116,9 +119,9 @@ export default function ChatInput({
             Unknown command. Try /today or /inbox.
           </p>
         ) : (
-          <p className="mt-2 text-center text-xs text-slate-400">
-            Press <kbd className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">Enter</kbd> to add •
-            <kbd className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">Shift + Enter</kbd> for a new line
+          <p className="mt-2 text-center text-xs text-muted-foreground">
+            Press <kbd className="rounded bg-muted px-1.5 py-0.5 text-foreground">Enter</kbd> to add •
+            <kbd className="ml-1 rounded bg-muted px-1.5 py-0.5 text-foreground">Shift + Enter</kbd> for a new line
           </p>
         )}
       </div>

@@ -29,20 +29,20 @@ const columnStyles: Record<
   inbox: {
     icon: <Inbox className="h-4 w-4" />,
     accent: "from-slate-500 to-slate-600",
-    softBg: "bg-slate-50",
-    badge: "bg-slate-100 text-slate-600",
+    softBg: "bg-muted/40",
+    badge: "bg-muted text-muted-foreground",
   },
   "in progress": {
     icon: <ListTodo className="h-4 w-4" />,
     accent: "from-sky-500 to-cyan-500",
-    softBg: "bg-sky-50",
-    badge: "bg-sky-100 text-sky-700",
+    softBg: "bg-sky-50 dark:bg-sky-950/30",
+    badge: "bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-200",
   },
   done: {
     icon: <CheckCircle2 className="h-4 w-4" />,
     accent: "from-emerald-500 to-teal-500",
-    softBg: "bg-emerald-50",
-    badge: "bg-emerald-100 text-emerald-700",
+    softBg: "bg-emerald-50 dark:bg-emerald-950/30",
+    badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-200",
   },
 };
 
@@ -57,14 +57,14 @@ function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50",
+        "rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm transition hover:border-foreground/20 hover:bg-muted/40",
         isDragging && "opacity-60"
       )}
       {...attributes}
       {...listeners}
     >
-      <p className="font-medium text-slate-900">{task.title}</p>
-      <Badge className="mt-2 w-fit rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+      <p className="font-medium text-foreground">{task.title}</p>
+      <Badge className="mt-2 w-fit rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {task.date || "No date"}
       </Badge>
     </Card>
@@ -83,8 +83,8 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
   return (
     <Card
       className={cn(
-        "flex min-h-[320px] flex-col gap-4 rounded-3xl border p-5 shadow-sm transition",
-        isOver ? "border-slate-400" : "border-slate-200",
+        "flex min-h-[320px] flex-col gap-4 rounded-3xl border border-border p-5 shadow-sm transition",
+        isOver && "border-foreground/40",
         tone.softBg
       )}
     >
@@ -92,8 +92,8 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
         <div className="flex items-center gap-3">
           <div className={cn("rounded-xl bg-gradient-to-br p-2 text-white shadow", tone.accent)}>{tone.icon}</div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">{status.name}</h3>
-            <p className="text-xs text-slate-500">{orderedTasks.length} tasks</p>
+            <h3 className="text-sm font-semibold text-foreground">{status.name}</h3>
+            <p className="text-xs text-muted-foreground">{orderedTasks.length} tasks</p>
           </div>
         </div>
         <Badge className={cn("rounded-full px-2 py-1 text-[10px] font-semibold uppercase", tone.badge)}>
@@ -103,7 +103,7 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
       <SortableContext items={orderedTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="flex flex-1 flex-col gap-3">
           {orderedTasks.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-8 text-center text-sm text-slate-400">
+            <div className="rounded-2xl border border-dashed border-border bg-card/80 px-4 py-8 text-center text-sm text-muted-foreground">
               Drag tasks here
             </div>
           ) : (

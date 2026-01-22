@@ -16,13 +16,13 @@ interface TodoListProps {
 export default function TodoList({ tasks, statusById, getNextStatus, onStatusChange, onDelete }: TodoListProps) {
   if (tasks.length === 0) {
     return (
-      <Card className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-slate-200 bg-white/70 px-6 py-16 text-center">
-        <div className="rounded-full bg-slate-100 p-4 text-slate-400">
+      <Card className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border bg-card/80 px-6 py-16 text-center">
+        <div className="rounded-full bg-muted p-4 text-muted-foreground">
           <ClipboardList className="h-6 w-6" />
         </div>
         <div>
-          <p className="text-base font-semibold text-slate-600">No tasks yet</p>
-          <p className="text-sm text-slate-400">Add something above to get momentum.</p>
+          <p className="text-base font-semibold text-foreground">No tasks yet</p>
+          <p className="text-sm text-muted-foreground">Add something above to get momentum.</p>
         </div>
       </Card>
     );
