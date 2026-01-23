@@ -99,6 +99,40 @@ export async function createTask(input: Omit<Task, "id" | "createdAt" | "updated
   );
 }
 
+export async function createTasks(inputs: Array<Omit<Task, "id" | "createdAt" | "updatedAt">>): Promise<Task[]> {
+  if (inputs.length === 0) {
+    return [];
+  }
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .from(TABLE_NAME)
+    .insert(
+      inputs.map((input) => ({
+        title: input.title,
+        status_id: input.statusId,
+        date: input.date,
+        order: input.order,
+      }))
+    )
+    .select();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) =>
+    mapTask(row as {
+      id: string;
+      title: string;
+      status_id: string;
+      date: string;
+      order: number;
+      created_at: string;
+      updated_at: string;
+    })
+  );
+}
+
 export async function updateTask(id: string, updates: TaskUpdate): Promise<Task> {
   const client = getSupabaseClient();
   const payload: {

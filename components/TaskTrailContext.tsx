@@ -9,11 +9,13 @@ export type TaskTrailContextValue = {
   setSelectedDate: (date: string) => void;
   statuses: Status[];
   tasks: Task[];
+  isBootstrapping: boolean;
   newTaskTitle: string;
   setNewTaskTitle: (value: string) => void;
   newStatusName: string;
   setNewStatusName: (value: string) => void;
   addTask: (overrides?: { title?: string; statusId?: string; date?: string }) => Promise<void>;
+  addTasks: (items: Array<{ title: string; statusId?: string; date?: string }>) => Promise<void>;
   changeTaskStatus: (taskId: string, statusId: string) => Promise<void>;
   deleteTaskById: (taskId: string) => Promise<void>;
   toggleTaskDone: (taskId: string) => Promise<void>;
@@ -22,17 +24,6 @@ export type TaskTrailContextValue = {
   renameStatus: (statusId: string, name: string) => Promise<void>;
   deleteStatusById: (statusId: string) => Promise<void>;
   handleStatusDragEnd: (event: DragEndEvent) => Promise<void>;
-  isAiModalOpen: boolean;
-  openAiModal: () => void;
-  closeAiModal: () => void;
-  aiInputText: string;
-  setAiInputText: (value: string) => void;
-  aiSuggestions: string[];
-  aiSelected: Set<string>;
-  isAiLoading: boolean;
-  toggleSuggestion: (task: string) => void;
-  fetchSuggestions: () => Promise<void>;
-  createSuggestedTasks: () => Promise<void>;
 };
 
 const TaskTrailContext = createContext<TaskTrailContextValue | null>(null);

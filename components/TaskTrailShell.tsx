@@ -5,7 +5,7 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { TaskTrailProvider } from "@/components/TaskTrailContext";
 import type { Status, Task } from "@/lib/types";
 import { ensureDefaultStatuses, createStatus, deleteStatus, updateStatus } from "@/lib/supabase/statuses";
-import { createTask, deleteTask, listTasks, updateTask } from "@/lib/supabase/tasks";
+import { createTask, createTasks, deleteTask, listTasks, updateTask } from "@/lib/supabase/tasks";
 import { getActiveContainerId, reorder } from "@/lib/dnd";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -17,13 +17,9 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   const [selectedDate, setSelectedDate] = useState<string>(today());
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newStatusName, setNewStatusName] = useState("");
-  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [aiInputText, setAiInputText] = useState("");
-  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
-  const [aiSelected, setAiSelected] = useState<Set<string>>(new Set());
-  const [isAiLoading, setIsAiLoading] = useState(false);
 
   const orderedStatuses = useMemo(() => [...statuses].sort((a, b) => a.order - b.order), [statuses]);
   const statusByName = useMemo(
@@ -37,7 +33,7 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
 
   const resolveDateForStatus = (statusId: string, currentDate: string) => {
     if (statusId === inboxStatusId) {
-      return "";
+      return currentDate;
     }
     if (statusId === inProgressStatusId) {
       return currentDate || selectedDate;
@@ -68,23 +64,27 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       invalidTasks.map((task) =>
         updateTask(task.id, {
           statusId: fallbackStatusId,
-          date: "",
+          date: task.date,
         })
       )
     );
 
     return loadedTasks.map((task) =>
-      allowedIds.has(task.statusId) ? task : { ...task, statusId: fallbackStatusId, date: "" }
+      allowedIds.has(task.statusId) ? task : { ...task, statusId: fallbackStatusId, date: task.date }
     );
   };
 
   useEffect(() => {
     const init = async () => {
-      const loadedStatuses = await ensureDefaultStatuses();
-      setStatuses(loadedStatuses);
-      const loadedTasks = await listTasks();
-      const normalizedTasks = await normalizeTasks(loadedTasks, loadedStatuses);
-      setTasks(normalizedTasks);
+      try {
+        const loadedStatuses = await ensureDefaultStatuses();
+        setStatuses(loadedStatuses);
+        const loadedTasks = await listTasks();
+        const normalizedTasks = await normalizeTasks(loadedTasks, loadedStatuses);
+        setTasks(normalizedTasks);
+      } finally {
+        setIsBootstrapping(false);
+      }
     };
     void init();
   }, []);
@@ -95,11 +95,62 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     if (!title || !statusId) {
       return;
     }
-    const date = resolveDateForStatus(statusId, overrides?.date ?? selectedDate);
+    const baseDate = overrides?.date ?? (statusId === inboxStatusId ? "" : selectedDate);
+    const date = resolveDateForStatus(statusId, baseDate);
     const nextOrder = Math.max(0, ...tasks.filter((task) => task.statusId === statusId).map((task) => task.order)) + 1;
     const created = await createTask({ title, statusId, date, order: nextOrder });
     setTasks((prev) => [...prev, created]);
     setNewTaskTitle("");
+  };
+
+  const handleAddTasks = async (items: Array<{ title: string; statusId?: string; date?: string }>) => {
+    const normalized = items
+      .map((item) => {
+        const title = item.title.trim();
+        const statusId = item.statusId ?? primaryStatusId;
+        if (!title || !statusId) {
+          return null;
+        }
+        const baseDate = item.date ?? (statusId === inboxStatusId ? "" : selectedDate);
+        const date = resolveDateForStatus(statusId, baseDate);
+        return { title, statusId, date };
+      })
+      .filter((item): item is { title: string; statusId: string; date: string } => Boolean(item));
+
+    if (normalized.length === 0) {
+      return;
+    }
+
+    const orderByStatus = new Map<string, number>();
+    tasks.forEach((task) => {
+      const current = orderByStatus.get(task.statusId) ?? 0;
+      orderByStatus.set(task.statusId, Math.max(current, task.order));
+    });
+
+    const grouped = new Map<string, Array<{ title: string; statusId: string; date: string }>>();
+    normalized.forEach((item) => {
+      const group = grouped.get(item.statusId) ?? [];
+      group.push(item);
+      grouped.set(item.statusId, group);
+    });
+
+    const payload: Array<Omit<Task, "id" | "createdAt" | "updatedAt">> = [];
+    grouped.forEach((group, statusId) => {
+      const startOrder = (orderByStatus.get(statusId) ?? 0) + 1;
+      group.forEach((item, index) => {
+        payload.push({
+          title: item.title,
+          statusId,
+          date: item.date,
+          order: startOrder + index,
+        });
+      });
+    });
+
+    const created = await createTasks(payload);
+    if (created.length > 0) {
+      setTasks((prev) => [...prev, ...created]);
+    }
   };
 
   const handleTaskStatusChange = async (taskId: string, statusId: string) => {
@@ -240,83 +291,19 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     await Promise.all(reordered.map((status) => updateStatus(status.id, { order: status.order })));
   };
 
-  const handleOpenAiModal = () => {
-    setIsAiModalOpen(true);
-    setAiSelected(new Set());
-  };
-
-  const handleCloseAiModal = () => {
-    setIsAiModalOpen(false);
-    setAiSuggestions([]);
-    setAiSelected(new Set());
-    setAiInputText("");
-  };
-
-  const handleToggleSuggestion = (task: string) => {
-    setAiSelected((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(task)) {
-        updated.delete(task);
-      } else {
-        updated.add(task);
-      }
-      return updated;
-    });
-  };
-
-  const handleFetchSuggestions = async () => {
-    if (!aiInputText.trim()) {
-      return;
-    }
-    setIsAiLoading(true);
-    try {
-      const response = await fetch("/api/ai/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: aiInputText }),
-      });
-      const data = (await response.json()) as { tasks?: string[] };
-      const suggestions = data.tasks ?? [];
-      setAiSuggestions(suggestions);
-      setAiSelected(new Set(suggestions));
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  const handleCreateSuggestedTasks = async () => {
-    if (!primaryStatusId) {
-      return;
-    }
-    const selectedTasks = Array.from(aiSelected);
-    if (selectedTasks.length === 0) {
-      return;
-    }
-    const baseOrder = Math.max(0, ...tasks.filter((task) => task.statusId === primaryStatusId).map((task) => task.order));
-    const createdTasks = await Promise.all(
-      selectedTasks.map((title, index) =>
-        createTask({
-          title,
-          statusId: primaryStatusId,
-          date: resolveDateForStatus(primaryStatusId, selectedDate),
-          order: baseOrder + index + 1,
-        })
-      )
-    );
-    setTasks((prev) => [...prev, ...createdTasks]);
-    handleCloseAiModal();
-  };
 
   const contextValue = {
     selectedDate,
     setSelectedDate,
     statuses: orderedStatuses,
     tasks,
+    isBootstrapping,
     newTaskTitle,
     setNewTaskTitle,
     newStatusName,
     setNewStatusName,
     addTask: handleAddTask,
+    addTasks: handleAddTasks,
     changeTaskStatus: handleTaskStatusChange,
     deleteTaskById: handleDeleteTask,
     toggleTaskDone: handleToggleTaskDone,
@@ -325,17 +312,6 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     renameStatus: handleRenameStatus,
     deleteStatusById: handleDeleteStatus,
     handleStatusDragEnd,
-    isAiModalOpen,
-    openAiModal: handleOpenAiModal,
-    closeAiModal: handleCloseAiModal,
-    aiInputText,
-    setAiInputText,
-    aiSuggestions,
-    aiSelected,
-    isAiLoading,
-    toggleSuggestion: handleToggleSuggestion,
-    fetchSuggestions: handleFetchSuggestions,
-    createSuggestedTasks: handleCreateSuggestedTasks,
   };
 
   return <TaskTrailProvider value={contextValue}>{children}</TaskTrailProvider>;

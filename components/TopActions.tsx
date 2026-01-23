@@ -45,11 +45,11 @@ export default function TopActions({
           className={`group relative rounded-full hover:bg-transparent ${
             activeView === "kanban" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
-          aria-label="Board view"
+          aria-label="Kanban view"
         >
           <LayoutGrid className="h-4 w-4" />
           <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-            Board
+            Kanban
           </span>
         </Button>
       </div>

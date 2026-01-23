@@ -1,45 +1,149 @@
 "use client";
 
-import { KeyboardEvent } from "react";
-import { Send, Sparkles } from "lucide-react";
+import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Send } from "lucide-react";
+import ChatInputPreviewList, { ChatInputPreviewItem } from "@/components/ChatInputPreviewList";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-
-interface CommandOption {
-  command: string;
-  label: string;
-}
 
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   placeholder?: string;
-  showAutocomplete?: boolean;
-  commands?: CommandOption[];
-  onCommandSelect?: (command: string) => void;
-  showCommandError?: boolean;
-  onAiClick?: () => void;
+  previewItems?: ChatInputPreviewItem[];
+  onPreviewTitleChange?: (id: string, value: string) => void;
+  onPreviewToggleSelect?: (id: string) => void;
+  onPreviewConfirm?: () => void;
+  onPreviewCancel?: () => void;
+  previewStatusText?: string;
+  isPreviewLoading?: boolean;
+  isSubmitDisabled?: boolean;
+  showAiStatusBadge?: boolean;
+  aiStatusLabel?: string;
+  commandItems?: CommandItem[];
+  isCommandAutocompleteEnabled?: boolean;
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   className?: string;
 }
+
+export type CommandItem = {
+  id: string;
+  label: string;
+  description: string;
+  displayLabel?: string;
+  placeholder?: string;
+};
 
 export default function ChatInput({
   value,
   onChange,
   onSubmit,
-  placeholder = "Add a task, or type /today",
-  showAutocomplete = false,
-  commands = [],
-  onCommandSelect,
-  showCommandError = false,
-  onAiClick,
+  placeholder = "Add a task",
+  previewItems,
+  onPreviewTitleChange,
+  onPreviewToggleSelect,
+  onPreviewConfirm,
+  onPreviewCancel,
+  previewStatusText,
+  isPreviewLoading = false,
+  isSubmitDisabled = false,
+  showAiStatusBadge = false,
+  aiStatusLabel = "No API key",
+  commandItems = [],
+  isCommandAutocompleteEnabled = false,
+  inputRef,
   className,
 }: ChatInputProps) {
+  const trimmedValue = value.trim();
+  const isSendDisabled = isSubmitDisabled || !trimmedValue;
+  const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const textareaRef = inputRef ?? internalTextareaRef;
+  const [isMultiline, setIsMultiline] = useState(false);
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+
+  const trimmedStartValue = value.trimStart();
+  const commandToken = trimmedStartValue.split(/\s+/)[0] ?? "";
+  const hasCommandArguments = trimmedStartValue.length > commandToken.length;
+  const commandMatch = useMemo(() => {
+    return commandItems.find(
+      (command) => trimmedStartValue === command.label || trimmedStartValue.startsWith(`${command.label} `)
+    );
+  }, [commandItems, trimmedStartValue]);
+  const commandPrefix = commandMatch?.label;
+  const commandDisplayLabel = commandMatch?.displayLabel ?? commandPrefix;
+  const commandPlaceholder = commandMatch?.placeholder;
+  const commandInputValue = useMemo(() => {
+    if (!commandPrefix) {
+      return value;
+    }
+    const escaped = commandPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`^\\s*${escaped}\\s*`);
+    return value.replace(pattern, "");
+  }, [commandPrefix, value]);
+  const isCommandMode =
+    isCommandAutocompleteEnabled && commandToken.startsWith("/") && !hasCommandArguments && !commandPrefix;
+  const filteredCommands = useMemo(
+    () =>
+      isCommandMode
+        ? commandItems.filter((command) => command.label.startsWith(commandToken))
+        : [],
+    [commandItems, commandToken, isCommandMode]
+  );
+  const isCommandMenuOpen = isCommandMode && filteredCommands.length > 0;
+
+  useEffect(() => {
+    if (!isCommandMenuOpen) {
+      setActiveCommandIndex(0);
+    } else if (activeCommandIndex >= filteredCommands.length) {
+      setActiveCommandIndex(0);
+    }
+  }, [activeCommandIndex, filteredCommands.length, isCommandMenuOpen]);
+
+  const applyCommand = (command: CommandItem) => {
+    onChange(`${command.label} `);
+    setActiveCommandIndex(0);
+  };
+
+  const handleValueChange = (nextValue: string) => {
+    if (commandPrefix) {
+      const trimmedNextValue = nextValue.replace(/^\s+/, "");
+      onChange(trimmedNextValue ? `${commandPrefix} ${trimmedNextValue}` : commandPrefix);
+      return;
+    }
+    onChange(nextValue);
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
       return;
+    }
+    if (commandPrefix && event.key === "Backspace" && commandInputValue.length === 0) {
+      event.preventDefault();
+      onChange("");
+      return;
+    }
+    if (isCommandMenuOpen) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveCommandIndex((prev) => (prev + 1) % filteredCommands.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveCommandIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const selected = filteredCommands[activeCommandIndex];
+        if (selected) {
+          applyCommand(selected);
+        }
+        return;
+      }
     }
     if (event.key === "Enter" && !event.shiftKey && !event.repeat) {
       event.preventDefault();
@@ -47,9 +151,15 @@ export default function ChatInput({
     }
   };
 
-  const trimmedValue = value.trim();
-
-  const hasAiAction = Boolean(onAiClick);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maxHeight = 200;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+    setIsMultiline(value.includes("\n"));
+  }, [value]);
 
   return (
     <div className={cn("bg-transparent", className)}>
@@ -57,73 +167,122 @@ export default function ChatInput({
         <div className="relative overflow-visible">
           <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 opacity-20 blur" />
 
-          <Card className="relative rounded-3xl border-border bg-card/95 shadow-xl backdrop-blur transition focus-within:border-transparent focus-within:ring-2 focus-within:ring-sky-400">
-            <Textarea
-              value={value}
-              onChange={(event) => onChange(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              className={cn(
-                "min-h-[56px] resize-none rounded-3xl border-0 bg-transparent px-5 py-3 text-base text-foreground focus-visible:ring-0",
-                hasAiAction ? "pr-32" : "pr-20"
+          {isCommandMenuOpen ? (
+            <div
+              role="listbox"
+              className="absolute bottom-full left-0 right-0 z-50 mb-2 w-full max-w-[36rem] rounded-lg border border-border bg-card p-1 text-foreground shadow-lg"
+            >
+              <div className="max-h-64 overflow-auto">
+                {filteredCommands.map((command, index) => {
+                  const isActive = index === activeCommandIndex;
+                  return (
+                    <button
+                      key={command.id}
+                      type="button"
+                      role="option"
+                      aria-selected={isActive}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applyCommand(command)}
+                      className={cn(
+                        "w-full rounded-md px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isActive ? "bg-accent text-accent-foreground" : "hover:bg-accent/60"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{command.label}</span>
+                        <span className="text-muted-foreground">{command.description}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="relative rounded-3xl border border-border/60 bg-card/95 shadow-lg backdrop-blur transition focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/40">
+            <div className={cn("flex gap-2 px-3 py-2", isMultiline ? "flex-col" : "flex-row items-center")}>
+              {!isMultiline && showAiStatusBadge && (
+                <Badge className="shrink-0 rounded-full border-border bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  {aiStatusLabel}
+                </Badge>
               )}
-            />
-            <div className="absolute bottom-4 right-4 flex items-center gap-2">
-              {hasAiAction && (
+              {commandDisplayLabel ? (
+                <Badge className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-gradient-to-r from-sky-500/50 via-cyan-500/50 to-emerald-500/50 px-2.5 py-0.5 text-[11px] font-semibold text-foreground shadow-[0_1px_0_rgba(0,0,0,0.04)] backdrop-blur-[2px] transition-all">
+                  {commandDisplayLabel}
+                </Badge>
+              ) : null}
+              <Textarea
+                ref={textareaRef}
+                value={commandInputValue}
+                onChange={(e) => handleValueChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={commandPlaceholder ?? placeholder}
+                rows={1}
+                disabled={isSubmitDisabled}
+                className={cn(
+                  "scrollbar-thin min-h-0 resize-none border-0 bg-transparent text-sm leading-7 text-foreground shadow-none outline-none placeholder:text-muted-foreground focus-visible:ring-0",
+                  isMultiline ? "w-full" : "min-w-0 flex-1"
+                )}
+              />
+              {isMultiline ? (
+                <div className="flex items-center justify-between">
+                  {showAiStatusBadge ? (
+                    <Badge className="shrink-0 rounded-full border-border bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      {aiStatusLabel}
+                    </Badge>
+                  ) : (
+                    <div />
+                  )}
+                  <Button
+                    type="button"
+                    size="icon"
+                    onClick={onSubmit}
+                    disabled={isSendDisabled}
+                    className={cn(
+                      "h-7 w-7 shrink-0 rounded-lg transition",
+                      !isSendDisabled
+                        ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-md hover:from-sky-600 hover:via-cyan-600 hover:to-emerald-600"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={onAiClick}
-                  className="h-9 gap-2 rounded-2xl px-3 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+                  size="icon"
+                  onClick={onSubmit}
+                  disabled={isSendDisabled}
+                  className={cn(
+                    "h-7 w-7 shrink-0 rounded-lg transition",
+                    !isSendDisabled
+                      ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-md hover:from-sky-600 hover:via-cyan-600 hover:to-emerald-600"
+                      : "bg-muted text-muted-foreground"
+                  )}
                 >
-                  <Sparkles className="h-4 w-4 text-sky-500" />
-                  AI Spark
+                  <Send className="h-4 w-4" />
                 </Button>
               )}
-              <Button
-                type="button"
-                size="icon"
-                onClick={onSubmit}
-                disabled={!trimmedValue}
-                className={cn(
-                  "h-9 w-9 rounded-2xl transition",
-                  trimmedValue
-                    ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-lg hover:from-sky-600 hover:via-cyan-600 hover:to-emerald-600"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
             </div>
-          </Card>
+          </div>
 
-          {showAutocomplete && commands.length > 0 && (
-            <div className="absolute bottom-full left-0 right-0 z-30 mb-3 max-h-56 overflow-y-auto rounded-2xl border border-border bg-card p-2 shadow-xl">
-              {commands.map((option) => (
-                <button
-                  key={option.command}
-                  type="button"
-                  onClick={() => onCommandSelect?.(option.command)}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                >
-                  <span className="font-semibold text-foreground">{option.command}</span>
-                  <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{option.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <ChatInputPreviewList
+            items={previewItems}
+            onTitleChange={onPreviewTitleChange}
+            onToggleSelect={onPreviewToggleSelect}
+            onConfirm={onPreviewConfirm}
+            onCancel={onPreviewCancel}
+            statusText={previewStatusText}
+            isLoading={isPreviewLoading}
+            isDisabled={isSubmitDisabled}
+          />
         </div>
 
-        {showCommandError ? (
-          <p className="mt-2 text-center text-xs font-semibold text-rose-500">
-            Unknown command. Try /today or /inbox.
-          </p>
-        ) : (
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            Press <kbd className="rounded bg-muted px-1.5 py-0.5 text-foreground">Enter</kbd> to add •
-            <kbd className="ml-1 rounded bg-muted px-1.5 py-0.5 text-foreground">Shift + Enter</kbd> for a new line
-          </p>
-        )}
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          Press <kbd className="rounded bg-muted px-1.5 py-0.5 text-foreground">Enter</kbd> to preview •
+          <kbd className="ml-1 rounded bg-muted px-1.5 py-0.5 text-foreground">Shift + Enter</kbd> for a new line
+        </p>
       </div>
     </div>
   );

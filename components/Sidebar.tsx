@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BarChart3, ChevronLeft, ChevronRight, LayoutList, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 
 const navItems = [
   { id: "tasks", label: "Tasks", icon: LayoutList },
@@ -13,13 +12,34 @@ const navItems = [
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "[" || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable) {
+        return;
+      }
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+        return;
+      }
+      event.preventDefault();
+      setIsCollapsed((prev) => !prev);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <aside
       className={`sticky top-0 h-screen border-r border-border bg-background transition-[width] duration-300 ease-in-out ${
         isCollapsed ? "w-20" : "w-64"
       }`}
     >
-      <Card className="flex h-full w-full flex-col rounded-none border-0 bg-transparent shadow-none">
+      <div className="flex h-full w-full flex-col">
         <div className="px-5 py-4">
           <div className={`flex h-16 w-full items-center ${isCollapsed ? "gap-0" : "gap-3"}`}>
             <div className="rounded-2xl bg-gradient-to-br from-sky-500 via-cyan-500 to-emerald-500 p-2 shadow-lg">
@@ -78,12 +98,15 @@ export default function Sidebar() {
             size="icon"
             onClick={() => setIsCollapsed((prev) => !prev)}
             aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted"
+            className="group relative h-8 w-8 rounded-full text-muted-foreground hover:bg-muted"
           >
             {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              {isCollapsed ? "Expand" : "Collapse"} ([)
+            </span>
           </Button>
         </div>
-      </Card>
+      </div>
     </aside>
   );
 }

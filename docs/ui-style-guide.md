@@ -14,7 +14,11 @@ This document defines the UI conventions for **Task Trail**. It is written to be
 ## 1) High-level principles
 
 ### 1.1 shadcn-first rule (mandatory)
-**Use the primitives in `components/ui` first** (Button, Card, Input, Textarea, Badge, Separator, Label, …) before building custom elements.
+**Use the primitives in `components/ui` first** (Button, Input, Textarea, Badge, Separator, Label, …) before building custom elements.
+
+**Exception: layout containers**
+- For structural layout wrappers (Sidebar, shell columns, page sections), prefer semantic `div` containers with token classes.
+- Do **not** wrap layout regions in `Card` unless the design is explicitly “card-like” (e.g., elevated surface with padding, border, and shadow).
 
 **Why**
 - Primitives already encode consistent typography, radius, borders, focus rings, and token usage.
@@ -311,7 +315,64 @@ Use this checklist whenever you add/modify UI.
 
 ---
 
-## 9) Quick reference (where to look)
+## 9) Custom scrollbar styling
+
+### 9.1 Overview
+Task Trail uses a custom scrollbar style for a cleaner, minimal look. The `.scrollbar-thin` utility class is defined in `app/globals.css` and provides:
+- Thin scrollbar width (5px)
+- Subtle, light gray color that blends with the UI
+- Theme-aware colors for both light and dark modes
+
+### 9.2 Usage
+Apply the `scrollbar-thin` class to any scrollable container:
+
+```tsx
+<div className="scrollbar-thin overflow-y-auto">
+  {/* scrollable content */}
+</div>
+```
+
+### 9.3 Where it's applied
+- **Main content area**: `app/page.tsx` — the primary scrollable workspace
+- **ChatInput textarea**: `components/ChatInput.tsx` — when text exceeds max height
+
+### 9.4 Implementation details
+The scrollbar styles are defined in `app/globals.css`:
+
+```css
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+/* Dark mode variant */
+.dark .scrollbar-thin {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+```
+
+### 9.5 Guidelines
+**Do**
+- Use `scrollbar-thin` on scrollable regions for visual consistency
+- Combine with `overflow-y-auto` or `overflow-x-auto`
+
+**Don't**
+- Override scrollbar colors with hardcoded values outside of globals.css
+- Apply to non-scrollable containers (no effect)
+
+---
+
+## 10) Quick reference (where to look)
 
 - **Tokens / theme**: `app/globals.css`
 - **cn() helper**: `lib/utils.ts`

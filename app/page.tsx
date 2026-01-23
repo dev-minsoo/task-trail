@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import AISuggestionModal from "@/components/AISuggestionModal";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ChatInput from "@/components/ChatInput";
 import KanbanBoard from "@/components/KanbanBoard";
 import Sidebar from "@/components/Sidebar";
@@ -12,23 +11,62 @@ import TaskTrailShell from "@/components/TaskTrailShell";
 import { useTaskTrail } from "@/components/TaskTrailContext";
 import type { Status } from "@/lib/types";
 
+type ParsedTaskItem = {
+  id: string;
+  title: string;
+  date: string;
+  isSelected: boolean;
+};
+
+type ParseResponseItem = {
+  title?: string;
+  date?: string;
+};
+
+type ParseResponse = {
+  mode: "ai" | "fallback";
+  items?: ParseResponseItem[];
+  message?: string;
+};
+
 function HomeContent() {
   const {
     newTaskTitle,
     setNewTaskTitle,
     addTask,
+    addTasks,
     statuses,
     tasks,
+    isBootstrapping,
     changeTaskStatus,
     deleteTaskById,
     handleTaskDragEnd,
-    openAiModal,
     selectedDate,
   } = useTaskTrail();
 
   const [activeView, setActiveView] = useState<ViewMode>("list");
   const [activeListStatus, setActiveListStatus] = useState("inbox");
   const [themeMode, setThemeMode] = useState<ThemeMode>("light");
+  const isLoading = isBootstrapping;
+  const [previewItems, setPreviewItems] = useState<ParsedTaskItem[]>([]);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isSavingPreview, setIsSavingPreview] = useState(false);
+  const [aiStatusLabel, setAiStatusLabel] = useState<string | null>(null);
+  const [isAiAvailable, setIsAiAvailable] = useState(false);
+
+  const commandItems = useMemo(
+    () => [
+      {
+        id: "ai",
+        label: "/summarize",
+        description: "Summarize input and split into Tasks",
+        displayLabel: "AI Summary",
+        placeholder: "Enter text to summarize.",
+      },
+    ],
+    []
+  );
 
   const applyTheme = (nextTheme: ThemeMode) => {
     const root = document.documentElement;
@@ -45,13 +83,30 @@ function HomeContent() {
     applyTheme(initialTheme);
   }, []);
 
-  const commandOptions = useMemo(
-    () => [
-      { command: "/today", label: "Send to In Progress", statusName: "In Progress" },
-      { command: "/inbox", label: "Capture in Inbox", statusName: "Inbox" },
-    ],
-    []
-  );
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchAiStatus = async () => {
+      try {
+        const response = await fetch("/api/ai/status");
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { enabled?: boolean };
+        if (isMounted) {
+          setIsAiAvailable(Boolean(data.enabled));
+        }
+      } catch {
+        // no-op: keep AI disabled
+      }
+    };
+
+    void fetchAiStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const statusByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -127,39 +182,145 @@ function HomeContent() {
   }, [allTasks, listTabs, selectedDate, statusByName]);
 
   const trimmedInput = newTaskTitle.trim();
-  const isCommandMode = trimmedInput.startsWith("/");
-  const commandToken = isCommandMode ? trimmedInput.split(" ")[0] : "";
-  const matchingCommands = isCommandMode
-    ? commandOptions.filter((option) => option.command.startsWith(commandToken))
-    : [];
-  const showAutocomplete = isCommandMode && matchingCommands.length > 0;
-  const showCommandError = isCommandMode && matchingCommands.length === 0 && trimmedInput.length > 1;
+  const isPreviewing = previewItems.length > 0;
 
-  const handleAddTask = async () => {
-    if (!trimmedInput) {
+  const createPreviewId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const handleParseInput = async () => {
+    if (!trimmedInput || isParsing || isPreviewing) {
       return;
     }
 
-    let title = trimmedInput;
-    let statusId: string | undefined;
+    const aiCommand = "/summarize";
+    const isAiCommand = trimmedInput === aiCommand || trimmedInput.startsWith(`${aiCommand} `);
 
-    if (trimmedInput.startsWith("/")) {
-      const [command, ...rest] = trimmedInput.split(" ");
-      const match = commandOptions.find((option) => option.command === command);
-      if (!match) {
+    if (!isAiCommand || !isAiAvailable) {
+      if (!inboxStatusId) {
         return;
       }
-      title = rest.join(" ").trim();
+      const title = trimmedInput.trim();
       if (!title) {
         return;
       }
-      statusId = statusByName.get(match.statusName.toLowerCase());
-    } else {
-      statusId = statusByName.get("inbox");
+      setIsParsing(true);
+      try {
+        await addTask({ title, statusId: inboxStatusId, date: "" });
+        setNewTaskTitle("");
+        setAiStatusLabel(null);
+        inputRef.current?.focus();
+      } finally {
+        setIsParsing(false);
+      }
+      return;
     }
 
-    await addTask({ title, statusId });
+    const aiInput = trimmedInput.replace(/^\/summarize\s*/, "").trim();
+    if (!aiInput) {
+      return;
+    }
+
+    setIsParsing(true);
+    setAiStatusLabel(null);
+
+    try {
+      const response = await fetch("/api/ai/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiInput }),
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as ParseResponse;
+      const items = (data.items ?? [])
+        .map((item) => ({
+          id: createPreviewId(),
+          title: item.title?.trim() ?? "",
+          date: item.date ?? "",
+          isSelected: true,
+        }))
+        .filter((item) => item.title.length > 0);
+
+      if (items.length === 0) {
+        return;
+      }
+
+      setPreviewItems(items);
+      setNewTaskTitle("");
+      setAiStatusLabel(data.mode === "fallback" ? "AI disabled" : null);
+    } finally {
+      setIsParsing(false);
+    }
   };
+
+  const handlePreviewTitleChange = (id: string, value: string) => {
+    setPreviewItems((prev) => prev.map((item) => (item.id === id ? { ...item, title: value } : item)));
+  };
+
+  const handlePreviewToggleSelect = (id: string) => {
+    setPreviewItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, isSelected: !item.isSelected } : item))
+    );
+  };
+
+  const handlePreviewCancel = () => {
+    setPreviewItems([]);
+    setAiStatusLabel(null);
+    inputRef.current?.focus();
+  };
+
+  const handlePreviewConfirm = async () => {
+    if (!inboxStatusId) {
+      return;
+    }
+
+    const selected = previewItems.filter((item) => item.isSelected && item.title.trim());
+    if (selected.length === 0) {
+      return;
+    }
+
+    setIsSavingPreview(true);
+    try {
+      await addTasks(
+        selected.map((item) => ({
+          title: item.title,
+          statusId: inboxStatusId,
+          date: item.date,
+        }))
+      );
+      setPreviewItems([]);
+      setAiStatusLabel(null);
+      inputRef.current?.focus();
+    } finally {
+      setIsSavingPreview(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isPreviewing) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isSavingPreview || isParsing) {
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handlePreviewCancel();
+        return;
+      }
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        void handlePreviewConfirm();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handlePreviewCancel, handlePreviewConfirm, isParsing, isPreviewing, isSavingPreview]);
 
   const getNextStatus = (statusId: string) => {
     if (statusId === inboxStatusId && inProgressStatusId) {
@@ -214,7 +375,7 @@ function HomeContent() {
               onToggleThemeAction={() => applyTheme(themeMode === "dark" ? "light" : "dark")}
             />
           </div>
-          <div className="relative h-full overflow-y-auto [scrollbar-gutter:stable]">
+          <div className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pb-20 pt-6">
               {activeView === "list" && (
                 <TaskHeader
@@ -225,7 +386,17 @@ function HomeContent() {
                 />
               )}
 
-              {activeView === "list" ? (
+              {isLoading ? (
+                <div className="flex min-h-[240px] w-full items-center justify-center">
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <span className="relative h-4 w-4">
+                      <span className="absolute inset-0 rounded-full border border-border/60" />
+                      <span className="absolute inset-0 rounded-full border-2 border-border border-t-transparent animate-spin" />
+                    </span>
+                    <span className="text-sm font-medium">Loading tasks…</span>
+                  </div>
+                </div>
+              ) : activeView === "list" ? (
                 <TodoList
                   tasks={activeTasks}
                   statusById={statusById}
@@ -242,18 +413,28 @@ function HomeContent() {
         <ChatInput
           value={newTaskTitle}
           onChange={setNewTaskTitle}
-          onSubmit={() => void handleAddTask()}
-          placeholder="Add a task or /today standup"
-          showAutocomplete={showAutocomplete}
-          commands={matchingCommands}
-          onCommandSelect={(command) => setNewTaskTitle(`${command} `)}
-          showCommandError={showCommandError}
-          onAiClick={openAiModal}
+          onSubmit={() => void handleParseInput()}
+          placeholder="Drop a task, we’ll keep the trail."
+          previewItems={previewItems.map((item) => ({
+            id: item.id,
+            title: item.title,
+            dateLabel: item.date || undefined,
+            isSelected: item.isSelected,
+          }))}
+          onPreviewTitleChange={handlePreviewTitleChange}
+          onPreviewToggleSelect={handlePreviewToggleSelect}
+          onPreviewCancel={handlePreviewCancel}
+          onPreviewConfirm={() => void handlePreviewConfirm()}
+          isPreviewLoading={isSavingPreview}
+          isSubmitDisabled={isParsing || isSavingPreview || isLoading}
+          showAiStatusBadge={Boolean(aiStatusLabel)}
+          aiStatusLabel={aiStatusLabel ?? undefined}
+          commandItems={commandItems}
+          isCommandAutocompleteEnabled={isAiAvailable}
+          inputRef={inputRef}
           className="sticky bottom-4 pr-[15px]"
         />
       </div>
-
-      <AISuggestionModal />
     </div>
   );
 }
