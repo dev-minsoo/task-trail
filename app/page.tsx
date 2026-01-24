@@ -14,13 +14,11 @@ import type { Status } from "@/lib/types";
 type ParsedTaskItem = {
   id: string;
   title: string;
-  date: string;
   isSelected: boolean;
 };
 
 type ParseResponseItem = {
   title?: string;
-  date?: string;
 };
 
 type ParseResponse = {
@@ -238,7 +236,6 @@ function HomeContent() {
         .map((item) => ({
           id: createPreviewId(),
           title: item.title?.trim() ?? "",
-          date: item.date ?? "",
           isSelected: true,
         }))
         .filter((item) => item.title.length > 0);
@@ -287,7 +284,6 @@ function HomeContent() {
         selected.map((item) => ({
           title: item.title,
           statusId: inboxStatusId,
-          date: item.date,
         }))
       );
       setPreviewItems([]);
@@ -418,7 +414,6 @@ function HomeContent() {
           previewItems={previewItems.map((item) => ({
             id: item.id,
             title: item.title,
-            dateLabel: item.date || undefined,
             isSelected: item.isSelected,
           }))}
           onPreviewTitleChange={handlePreviewTitleChange}
