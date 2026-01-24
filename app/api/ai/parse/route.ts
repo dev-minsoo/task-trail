@@ -27,22 +27,26 @@ function normalizeItems(content: string): ParsedItem[] {
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const cleaned = fencedMatch ? fencedMatch[1].trim() : trimmed;
 
+  const normalizeTitle = (value: string) => value.replace(/\s+/g, " ").trim();
+
   try {
     const parsed = JSON.parse(cleaned);
     const rawItems: unknown[] = Array.isArray(parsed)
       ? parsed
-      : parsed && typeof parsed === "object" && Array.isArray(parsed.items)
-        ? parsed.items
-        : [];
+      : parsed && typeof parsed === "object" && Array.isArray((parsed as { todo?: unknown }).todo)
+        ? ((parsed as { todo?: unknown }).todo as unknown[])
+        : parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown }).items)
+          ? ((parsed as { items?: unknown }).items as unknown[])
+          : [];
 
     return rawItems
       .map((item) => {
         if (typeof item === "string") {
-          return { title: item.trim() };
+          return { title: normalizeTitle(item) };
         }
         if (item && typeof item === "object") {
           const record = item as Record<string, unknown>;
-          const title = typeof record.title === "string" ? record.title.trim() : "";
+          const title = typeof record.title === "string" ? normalizeTitle(record.title) : "";
           return { title };
         }
         return { title: "" };
@@ -53,7 +57,10 @@ function normalizeItems(content: string): ParsedItem[] {
       (match) => match[1]?.trim() ?? ""
     );
     if (titleMatches.length > 0) {
-      return titleMatches.filter((title) => title.length > 0).map((title) => ({ title }));
+      return titleMatches
+        .map((title) => normalizeTitle(title))
+        .filter((title) => title.length > 0)
+        .map((title) => ({ title }));
     }
 
     return cleaned
@@ -65,6 +72,8 @@ function normalizeItems(content: string): ParsedItem[] {
       .filter((line) => !/^\{\s*$/.test(line))
       .filter((line) => !/^\}\s*,?$/.test(line))
       .filter((line) => !/^\]\s*$/.test(line))
+      .map((title) => normalizeTitle(title))
+      .filter((title) => title.length > 0)
       .map((title) => ({ title }));
   }
 }
@@ -74,14 +83,14 @@ export async function POST(request: Request) {
   const trimmed = text?.trim() ?? "";
 
   if (!trimmed) {
-    return NextResponse.json({ mode: "fallback", items: [] });
+    return NextResponse.json({ mode: "fallback", todo: [] });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({
       mode: "fallback",
-      items: [{ title: trimmed }],
+      todo: [trimmed],
       message: "AI disabled",
     });
   }
@@ -99,7 +108,7 @@ export async function POST(request: Request) {
         {
           role: "system",
           content:
-            "You convert a user input into a JSON array of task titles (strings). Respond with only a JSON array of strings. No code fences, no extra keys. Today is " +
+            "You convert a user input into natural, concise TODOs. Output Format: {\"todo\":[\"todo1\",\"todo2\"]}. Use natural task phrasing in the same language as the input (Korean or English) and fix spacing. Respond with only JSON, no code fences. Today is " +
             today +
             ".",
         },
@@ -117,5 +126,5 @@ export async function POST(request: Request) {
   const content = data.choices?.[0]?.message?.content ?? "";
   const items = normalizeItems(content);
 
-  return NextResponse.json({ mode: "ai", items });
+  return NextResponse.json({ mode: "ai", todo: items.map((item) => item.title) });
 }

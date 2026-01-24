@@ -17,13 +17,9 @@ type ParsedTaskItem = {
   isSelected: boolean;
 };
 
-type ParseResponseItem = {
-  title?: string;
-};
-
 type ParseResponse = {
   mode: "ai" | "fallback";
-  items?: ParseResponseItem[];
+  todo?: string[];
   message?: string;
 };
 
@@ -232,10 +228,10 @@ function HomeContent() {
       }
 
       const data = (await response.json()) as ParseResponse;
-      const items = (data.items ?? [])
-        .map((item) => ({
+      const items = (data.todo ?? [])
+        .map((title) => ({
           id: createPreviewId(),
-          title: item.title?.trim() ?? "",
+          title: title.trim(),
           isSelected: true,
         }))
         .filter((item) => item.title.length > 0);

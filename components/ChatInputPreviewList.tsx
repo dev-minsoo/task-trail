@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { Check, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,10 +42,6 @@ export default function ChatInputPreviewList({
   isDisabled = false,
   className,
 }: ChatInputPreviewListProps) {
-  if (items.length === 0) {
-    return null;
-  }
-
   const isActionDisabled = isDisabled || isLoading;
   const resolvedConfirmLabel = isLoading ? "Saving..." : confirmLabel;
   const selectedCount = items.filter((item) => item.isSelected).length;
@@ -73,6 +69,10 @@ export default function ChatInputPreviewList({
     }
     onToggleSelect?.(id);
   };
+
+  if (items.length === 0) {
+    return null;
+  }
 
   return (
     <Card
