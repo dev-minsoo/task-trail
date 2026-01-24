@@ -102,6 +102,13 @@ function HomeContent() {
     };
   }, []);
 
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+    inputRef.current?.focus();
+  }, [isLoading]);
+
   const statusByName = useMemo(() => {
     const map = new Map<string, string>();
     statuses.forEach((status) => {
@@ -369,14 +376,13 @@ function HomeContent() {
           </div>
           <div className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pb-20 pt-6">
-              {activeView === "list" && (
-                <TaskHeader
-                  tabs={listTabs}
-                  activeTab={activeListStatus}
-                  counts={listTabCounts}
-                  onTabChangeAction={setActiveListStatus}
-                />
-              )}
+              <TaskHeader
+                tabs={listTabs}
+                activeTab={activeListStatus}
+                counts={listTabCounts}
+                onTabChangeAction={setActiveListStatus}
+                showTabs={activeView === "list"}
+              />
 
               {isLoading ? (
                 <div className="flex min-h-[240px] w-full items-center justify-center">

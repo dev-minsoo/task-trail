@@ -55,7 +55,13 @@ export default function ChatInputPreviewList({
       return;
     }
     const handle = requestAnimationFrame(() => {
-      inputRefs.current[editingId]?.focus();
+      const input = inputRefs.current[editingId];
+      if (!input) {
+        return;
+      }
+      input.focus();
+      const length = input.value.length;
+      input.setSelectionRange(length, length);
     });
     return () => cancelAnimationFrame(handle);
   }, [editingId]);
