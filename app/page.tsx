@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChatInput from "@/components/ChatInput";
 import KanbanBoard from "@/components/KanbanBoard";
 import Sidebar from "@/components/Sidebar";
@@ -9,7 +9,11 @@ import TopActions, { type ThemeMode, type ViewMode } from "@/components/TopActio
 import TodoList from "@/components/TodoList";
 import TaskTrailShell from "@/components/TaskTrailShell";
 import { useTaskTrail } from "@/components/TaskTrailContext";
-import type { Status } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import type { Status, Task } from "@/lib/types";
 
 type ParsedTaskItem = {
   id: string;
@@ -21,6 +25,74 @@ type ParseResponse = {
   mode: "ai" | "fallback";
   todo?: string[];
   message?: string;
+};
+
+type DateRange = {
+  start: string;
+  end: string;
+};
+
+const getTaskTimestamp = (task: Task, statusKey: string) => {
+  if (statusKey === "in progress") {
+    return task.startedAt ?? task.createdAt;
+  }
+  if (statusKey === "done") {
+    return task.completedAt ?? task.updatedAt;
+  }
+  return task.createdAt;
+};
+
+const isTaskInRange = (task: Task, statusKey: string, rangeStart: Date | null, rangeEnd: Date | null) => {
+  if (statusKey === "inbox") {
+    return true;
+  }
+  if (!rangeStart || !rangeEnd) {
+    return true;
+  }
+  const timestamp = new Date(getTaskTimestamp(task, statusKey)).getTime();
+  return timestamp >= rangeStart.getTime() && timestamp <= rangeEnd.getTime();
+};
+
+const getTaskSortTime = (task: Task, statusKey: string) =>
+  new Date(getTaskTimestamp(task, statusKey)).getTime();
+
+const LIST_TABS = [
+  { key: "inbox", label: "Inbox" },
+  { key: "in progress", label: "In Progress" },
+  { key: "done", label: "Done" },
+];
+
+const formatDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getDefaultDateRange = () => {
+  const today = new Date();
+  const end = formatDateInput(today);
+  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  startDate.setDate(startDate.getDate() - 6);
+  return { start: formatDateInput(startDate), end };
+};
+
+const parseDateStart = (value: string) => {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  if (!year || !month || !day) {
+    return null;
+  }
+  return new Date(year, month - 1, day);
+};
+
+const parseDateEnd = (value: string) => {
+  const start = parseDateStart(value);
+  if (!start) {
+    return null;
+  }
+  const end = new Date(start);
+  end.setHours(23, 59, 59, 999);
+  return end;
 };
 
 function HomeContent() {
@@ -35,7 +107,6 @@ function HomeContent() {
     changeTaskStatus,
     deleteTaskById,
     handleTaskDragEnd,
-    selectedDate,
   } = useTaskTrail();
 
   const [activeView, setActiveView] = useState<ViewMode>("list");
@@ -48,6 +119,9 @@ function HomeContent() {
   const [isSavingPreview, setIsSavingPreview] = useState(false);
   const [aiStatusLabel, setAiStatusLabel] = useState<string | null>(null);
   const [isAiAvailable, setIsAiAvailable] = useState(false);
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultDateRange());
+  const [draftRange, setDraftRange] = useState<DateRange>(() => getDefaultDateRange());
 
   const commandItems = useMemo(
     () => [
@@ -137,14 +211,11 @@ function HomeContent() {
   const inProgressStatusId = statusByName.get("in progress");
   const doneStatusId = statusByName.get("done");
 
-  const listTabs = [
-    { key: "inbox", label: "Inbox" },
-    { key: "in progress", label: "In Progress" },
-    { key: "done", label: "Done" },
-  ];
+  const listTabs = LIST_TABS;
+
 
   const allTasks = useMemo(() => {
-    return [...tasks].sort((a, b) => {
+    return tasks.filter((task) => !task.isArchived).sort((a, b) => {
       const orderA = statusOrder.get(a.statusId) ?? 0;
       const orderB = statusOrder.get(b.statusId) ?? 0;
       if (orderA === orderB) {
@@ -153,6 +224,9 @@ function HomeContent() {
       return orderA - orderB;
     });
   }, [tasks, statusOrder]);
+
+  const rangeStart = useMemo(() => parseDateStart(dateRange.start), [dateRange.start]);
+  const rangeEnd = useMemo(() => parseDateEnd(dateRange.end), [dateRange.end]);
 
   const listTabCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -173,14 +247,18 @@ function HomeContent() {
       if (!key) {
         return;
       }
-      if (key !== "inbox" && task.date !== selectedDate) {
+      if (key === "inbox") {
+        counts[key] += 1;
+        return;
+      }
+      if (!isTaskInRange(task, key, rangeStart, rangeEnd)) {
         return;
       }
       counts[key] += 1;
     });
 
     return counts;
-  }, [allTasks, listTabs, selectedDate, statusByName]);
+  }, [allTasks, listTabs, rangeEnd, rangeStart, statusByName]);
 
   const trimmedInput = newTaskTitle.trim();
   const isPreviewing = previewItems.length > 0;
@@ -265,13 +343,13 @@ function HomeContent() {
     );
   };
 
-  const handlePreviewCancel = () => {
+  const handlePreviewCancel = useCallback(() => {
     setPreviewItems([]);
     setAiStatusLabel(null);
     inputRef.current?.focus();
-  };
+  }, []);
 
-  const handlePreviewConfirm = async () => {
+  const handlePreviewConfirm = useCallback(async () => {
     if (!inboxStatusId) {
       return;
     }
@@ -295,7 +373,7 @@ function HomeContent() {
     } finally {
       setIsSavingPreview(false);
     }
-  };
+  }, [addTasks, inboxStatusId, previewItems]);
 
   useEffect(() => {
     if (!isPreviewing) {
@@ -334,32 +412,51 @@ function HomeContent() {
     return null;
   };
 
+  const rangeFilteredTasks = useMemo(() => {
+    return allTasks.filter((task) => {
+      const statusName = statusById.get(task.statusId)?.name.toLowerCase() ?? "inbox";
+      return isTaskInRange(task, statusName, rangeStart, rangeEnd);
+    });
+  }, [allTasks, rangeEnd, rangeStart, statusById]);
+
   const activeTasks = useMemo(() => {
     if (activeView !== "list") {
-      return allTasks;
+      return rangeFilteredTasks;
     }
 
     const statusId = statusByName.get(activeListStatus);
     if (!statusId) {
-      return allTasks;
+      return rangeFilteredTasks;
     }
 
-    const shouldFilterByDate = activeListStatus !== "inbox";
-    const filtered = allTasks.filter((task) => {
-      if (task.statusId !== statusId) {
-        return false;
-      }
-      if (!shouldFilterByDate) {
-        return true;
-      }
-      return task.date === selectedDate;
-    });
+    const filtered = rangeFilteredTasks.filter((task) => task.statusId === statusId);
     return filtered.sort((a, b) => {
-      const aTime = new Date(shouldFilterByDate ? a.updatedAt : a.createdAt).getTime();
-      const bTime = new Date(shouldFilterByDate ? b.updatedAt : b.createdAt).getTime();
+      const aTime = getTaskSortTime(a, activeListStatus);
+      const bTime = getTaskSortTime(b, activeListStatus);
       return bTime - aTime;
     });
-  }, [activeListStatus, activeView, allTasks, selectedDate, statusByName]);
+  }, [activeListStatus, activeView, rangeFilteredTasks, statusByName]);
+
+  const rangeLabel =
+    dateRange.start === dateRange.end ? dateRange.start : `${dateRange.start} – ${dateRange.end}`;
+
+  const handleApplyRange = () => {
+    const start = parseDateStart(draftRange.start);
+    const end = parseDateStart(draftRange.end);
+    if (start && end && start > end) {
+      setDateRange({ start: draftRange.end, end: draftRange.start });
+    } else {
+      setDateRange(draftRange);
+    }
+    setIsRangeOpen(false);
+  };
+
+  const handleClearRange = () => {
+    const defaults = getDefaultDateRange();
+    setDateRange(defaults);
+    setDraftRange(defaults);
+    setIsRangeOpen(false);
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
@@ -375,13 +472,84 @@ function HomeContent() {
             />
           </div>
           <div className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pb-20 pt-6">
+            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-8 pb-20 pt-6 md:px-12">
               <TaskHeader
                 tabs={listTabs}
                 activeTab={activeListStatus}
                 counts={listTabCounts}
                 onTabChangeAction={setActiveListStatus}
                 showTabs={activeView === "list"}
+                actions={
+                  <div className="relative">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-haspopup="dialog"
+                      aria-expanded={isRangeOpen}
+                      onClick={() => {
+                        setDraftRange(dateRange);
+                        setIsRangeOpen((prev) => !prev);
+                      }}
+                      className="h-9 rounded-full border-border bg-card px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+                    >
+                      <span className="mr-2 text-[10px]">Range</span>
+                      <span className="text-foreground text-[11px] normal-case tracking-normal">
+                        {rangeLabel}
+                      </span>
+                    </Button>
+                    {isRangeOpen ? (
+                      <Card className="absolute right-0 z-20 mt-2 w-[320px] border-border bg-card p-4 shadow-lg">
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                              Date range
+                            </p>
+                            <span className="text-[10px] text-muted-foreground">{rangeLabel}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Start</Label>
+                              <Input
+                                type="date"
+                                value={draftRange.start}
+                                onChange={(event) =>
+                                  setDraftRange((prev) => ({ ...prev, start: event.target.value }))
+                                }
+                                className="h-9 bg-background text-foreground"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">End</Label>
+                              <Input
+                                type="date"
+                                value={draftRange.end}
+                                onChange={(event) =>
+                                  setDraftRange((prev) => ({ ...prev, end: event.target.value }))
+                                }
+                                className="h-9 bg-background text-foreground"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-border pt-3">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground"
+                              onClick={handleClearRange}
+                            >
+                              Reset
+                            </Button>
+                            <Button type="button" size="sm" onClick={handleApplyRange}>
+                              Apply
+                            </Button>
+                          </div>
+                        </div>
+                      </Card>
+                    ) : null}
+                  </div>
+                }
               />
 
               {isLoading ? (
@@ -403,7 +571,7 @@ function HomeContent() {
                   onDelete={deleteTaskById}
                 />
               ) : (
-                <KanbanBoard statuses={statuses} tasks={tasks} onTaskDragEnd={handleTaskDragEnd} />
+                <KanbanBoard statuses={statuses} tasks={rangeFilteredTasks} onTaskDragEnd={handleTaskDragEnd} />
               )}
             </div>
           </div>
@@ -429,7 +597,7 @@ function HomeContent() {
           commandItems={commandItems}
           isCommandAutocompleteEnabled={isAiAvailable}
           inputRef={inputRef}
-          className="sticky bottom-4 pr-[15px]"
+          className="sticky bottom-4 px-8 md:px-12"
         />
       </div>
     </div>

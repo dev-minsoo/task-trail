@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BarChart3, ChevronLeft, ChevronRight, LayoutList, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Archive, BarChart3, ChevronLeft, ChevronRight, LayoutList, Sparkles } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const navItems = [
-  { id: "tasks", label: "Tasks", icon: LayoutList },
-  { id: "reports", label: "Reports", icon: BarChart3 },
+  { id: "tasks", label: "Tasks", icon: LayoutList, href: "/" },
+  { id: "archived", label: "Archived", icon: Archive, href: "/archived" },
+  { id: "reports", label: "Reports", icon: BarChart3, href: "/reports" },
 ];
 
 export default function Sidebar() {
@@ -59,13 +62,14 @@ export default function Sidebar() {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <Button
+              <Link
                 key={item.id}
-                type="button"
-                variant="ghost"
-                className={`group relative h-11 w-full text-muted-foreground hover:bg-muted hover:text-foreground ${
+                href={item.href}
+                className={cn(
+                  buttonVariants({ variant: "ghost" }),
+                  "group relative h-11 w-full text-muted-foreground hover:bg-muted hover:text-foreground",
                   isCollapsed ? "justify-center px-0" : "justify-start gap-3"
-                }`}
+                )}
               >
                 <Icon className="h-4 w-4 text-muted-foreground" />
                 <span
@@ -82,7 +86,7 @@ export default function Sidebar() {
                 >
                   {item.label}
                 </span>
-              </Button>
+              </Link>
             );
           })}
         </nav>

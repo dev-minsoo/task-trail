@@ -13,6 +13,10 @@ export type Task = {
   order: number;
   createdAt: string;
   updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  isArchived: boolean;
+  archivedAt: string | null;
 };
 
 export type TaskUpdate = Partial<Omit<Task, "id" | "createdAt">>;

@@ -7,31 +7,37 @@ type TaskTab = {
   label: string;
 };
 
-type TaskHeaderProps = {
+export type TaskHeaderProps = {
+  title?: string;
+  description?: string;
   tabs?: TaskTab[];
   activeTab?: string;
   counts?: Record<string, number>;
   onTabChangeAction?: (tab: string) => void;
   showTabs?: boolean;
+  actions?: React.ReactNode;
 };
 
-export default function TaskHeader({
+const TaskHeader = ({
+  title = "Tasks",
+  description = "Track daily work and keep the flow moving.",
   tabs = [],
   activeTab,
   counts = {},
   onTabChangeAction,
   showTabs = true,
-}: TaskHeaderProps) {
+  actions,
+}: TaskHeaderProps) => {
   const hasTabs = showTabs && tabs.length > 0 && Boolean(activeTab) && Boolean(onTabChangeAction);
   return (
     <div className="flex flex-col gap-4">
       <div className={cn("flex flex-wrap items-end justify-between gap-4", hasTabs ? "pb-0" : "pb-4")}
       >
         <div>
-          <p className="text-base font-semibold uppercase tracking-[0.2em] text-muted-foreground">Tasks</p>
-          <p className="mt-2 text-sm text-muted-foreground">Track daily work and keep the flow moving.</p>
+          <p className="text-base font-semibold uppercase tracking-[0.2em] text-muted-foreground">{title}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3" />
+        <div className="flex flex-wrap items-center gap-3">{actions}</div>
       </div>
       {hasTabs ? (
         <div className="flex flex-wrap items-center gap-6 border-b border-border">
@@ -62,4 +68,6 @@ export default function TaskHeader({
       )}
     </div>
   );
-}
+};
+
+export default TaskHeader;

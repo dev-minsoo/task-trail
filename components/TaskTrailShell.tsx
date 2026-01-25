@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { TaskTrailProvider } from "@/components/TaskTrailContext";
 import type { Status, Task } from "@/lib/types";
 import { ensureDefaultStatuses, createStatus, deleteStatus, updateStatus } from "@/lib/supabase/statuses";
 import { createTask, createTasks, deleteTask, listTasks, updateTask } from "@/lib/supabase/tasks";
+import { createTaskStatusHistory } from "@/lib/supabase/status-history";
 import { getActiveContainerId, reorder } from "@/lib/dnd";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -20,6 +21,7 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newStatusName, setNewStatusName] = useState("");
+  const hasInitialized = useRef(false);
 
   const orderedStatuses = useMemo(() => [...statuses].sort((a, b) => a.order - b.order), [statuses]);
   const statusByName = useMemo(
@@ -75,6 +77,10 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   };
 
   useEffect(() => {
+    if (hasInitialized.current) {
+      return;
+    }
+    hasInitialized.current = true;
     const init = async () => {
       try {
         const loadedStatuses = await ensureDefaultStatuses();
@@ -134,7 +140,7 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       grouped.set(item.statusId, group);
     });
 
-    const payload: Array<Omit<Task, "id" | "createdAt" | "updatedAt">> = [];
+    const payload: Array<Parameters<typeof createTask>[0]> = [];
     grouped.forEach((group, statusId) => {
       const startOrder = (orderByStatus.get(statusId) ?? 0) + 1;
       group.forEach((item, index) => {
@@ -160,8 +166,34 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     }
     const resolvedDate = resolveDateForStatus(statusId, task.date);
     const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === statusId).map((item) => item.order)) + 1;
-    const updated = await updateTask(taskId, { statusId, order: nextOrder, date: resolvedDate });
+    const now = new Date().toISOString();
+    const updates: Parameters<typeof updateTask>[1] = {
+      statusId,
+      order: nextOrder,
+      date: resolvedDate,
+    };
+
+    if (statusId === inboxStatusId) {
+      updates.startedAt = null;
+      updates.completedAt = null;
+    }
+    if (statusId === inProgressStatusId && !task.startedAt) {
+      updates.startedAt = now;
+    }
+    if (statusId === doneStatusId) {
+      updates.completedAt = now;
+    } else {
+      updates.completedAt = null;
+    }
+
+    const updated = await updateTask(taskId, updates);
     setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
+    await createTaskStatusHistory({
+      taskId,
+      fromStatusId: task.statusId,
+      toStatusId: statusId,
+      changedAt: now,
+    });
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -223,10 +255,45 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       })
     );
 
+    const now = new Date().toISOString();
+    const movedTask = normalizedTarget.find((task) => task.id === activeTask.id);
+    const movedStatusId = movedTask?.statusId ?? activeTask.statusId;
+    const statusUpdates: Parameters<typeof updateTask>[1] = {
+      statusId: movedStatusId,
+      order: movedTask?.order ?? activeTask.order,
+      date: movedTask?.date ?? activeTask.date,
+    };
+
+    if (movedStatusId === inboxStatusId) {
+      statusUpdates.startedAt = null;
+      statusUpdates.completedAt = null;
+    }
+    if (movedStatusId === inProgressStatusId && !activeTask.startedAt) {
+      statusUpdates.startedAt = now;
+    }
+    if (movedStatusId === doneStatusId) {
+      statusUpdates.completedAt = now;
+    } else {
+      statusUpdates.completedAt = null;
+    }
+
     await Promise.all([
-      ...normalizedTarget.map((task) => updateTask(task.id, { statusId: task.statusId, order: task.order, date: task.date })),
+      ...normalizedTarget.map((task) =>
+        task.id === activeTask.id
+          ? updateTask(task.id, statusUpdates)
+          : updateTask(task.id, { order: task.order })
+      ),
       ...normalizedSource.map((task) => updateTask(task.id, { order: task.order })),
     ]);
+
+    if (activeTask.statusId !== movedStatusId) {
+      await createTaskStatusHistory({
+        taskId: activeTask.id,
+        fromStatusId: activeTask.statusId,
+        toStatusId: movedStatusId,
+        changedAt: now,
+      });
+    }
   };
 
   const handleToggleTaskDone = async (taskId: string) => {
@@ -246,8 +313,34 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     const nextStatusId = isDone ? fallbackStatusId : doneStatusId;
     const resolvedDate = isDone ? resolveDateForStatus(nextStatusId, task.date) : task.date;
     const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === nextStatusId).map((item) => item.order)) + 1;
-    const updated = await updateTask(taskId, { statusId: nextStatusId, order: nextOrder, date: resolvedDate });
+    const now = new Date().toISOString();
+    const updates: Parameters<typeof updateTask>[1] = {
+      statusId: nextStatusId,
+      order: nextOrder,
+      date: resolvedDate,
+    };
+
+    if (nextStatusId === inboxStatusId) {
+      updates.startedAt = null;
+      updates.completedAt = null;
+    }
+    if (nextStatusId === inProgressStatusId && !task.startedAt) {
+      updates.startedAt = now;
+    }
+    if (nextStatusId === doneStatusId) {
+      updates.completedAt = now;
+    } else {
+      updates.completedAt = null;
+    }
+
+    const updated = await updateTask(taskId, updates);
     setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
+    await createTaskStatusHistory({
+      taskId,
+      fromStatusId: task.statusId,
+      toStatusId: nextStatusId,
+      changedAt: now,
+    });
   };
 
   const handleAddStatus = async () => {

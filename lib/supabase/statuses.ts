@@ -36,51 +36,62 @@ export async function listStatuses(): Promise<Status[]> {
   return (data ?? []).map((row) => mapStatus(row as { id: string; name: string; order: number; created_at: string }));
 }
 
+let ensureStatusesPromise: Promise<Status[]> | null = null;
+
 export async function ensureDefaultStatuses(): Promise<Status[]> {
-  const statuses = await listStatuses();
-  if (statuses.length > 0) {
-    const normalized = new Map(statuses.map((status) => [status.name.toLowerCase(), status]));
-    const hasRequired = defaultStatuses.every((status) => normalized.has(status.name.toLowerCase()));
-
-    if (!hasRequired) {
-      const updates = statuses
-        .map((status) => {
-          const legacyName = status.name.toLowerCase();
-          const mappedName = legacyStatusMap.get(legacyName);
-          if (!mappedName) {
-            return null;
-          }
-          const desired = defaultStatuses.find((item) => item.name === mappedName);
-          if (!desired) {
-            return null;
-          }
-          return updateStatus(status.id, { name: desired.name, order: desired.order });
-        })
-        .filter((update): update is Promise<Status> => Boolean(update));
-
-      if (updates.length > 0) {
-        await Promise.all(updates);
-      }
-    }
-
-    const refreshed = await listStatuses();
-    const refreshedMap = new Map(refreshed.map((status) => [status.name.toLowerCase(), status]));
-    const missing = defaultStatuses.filter((status) => !refreshedMap.has(status.name.toLowerCase()));
-
-    if (missing.length > 0) {
-      const client = getSupabaseClient();
-      const { error } = await client.from(TABLE_NAME).insert(missing);
-      if (error) {
-        throw error;
-      }
-    }
-
-    const finalStatuses = await listStatuses();
-    const orderMap = new Map(defaultStatuses.map((status) => [status.name.toLowerCase(), status.order]));
-    return finalStatuses
-      .filter((status) => orderMap.has(status.name.toLowerCase()))
-      .sort((a, b) => (orderMap.get(a.name.toLowerCase()) ?? a.order) - (orderMap.get(b.name.toLowerCase()) ?? b.order));
+  if (ensureStatusesPromise) {
+    return ensureStatusesPromise;
   }
+
+  ensureStatusesPromise = (async () => {
+    const statuses = await listStatuses();
+    if (statuses.length > 0) {
+      const normalized = new Map(statuses.map((status) => [status.name.toLowerCase(), status]));
+      const hasRequired = defaultStatuses.every((status) => normalized.has(status.name.toLowerCase()));
+      let didMutate = false;
+
+      if (!hasRequired) {
+        const updates = statuses
+          .map((status) => {
+            const legacyName = status.name.toLowerCase();
+            const mappedName = legacyStatusMap.get(legacyName);
+            if (!mappedName) {
+              return null;
+            }
+            const desired = defaultStatuses.find((item) => item.name === mappedName);
+            if (!desired) {
+              return null;
+            }
+            return updateStatus(status.id, { name: desired.name, order: desired.order });
+          })
+          .filter((update): update is Promise<Status> => Boolean(update));
+
+        if (updates.length > 0) {
+          await Promise.all(updates);
+          didMutate = true;
+        }
+      }
+
+      const statusMap = new Map(
+        (didMutate ? await listStatuses() : statuses).map((status) => [status.name.toLowerCase(), status])
+      );
+      const missing = defaultStatuses.filter((status) => !statusMap.has(status.name.toLowerCase()));
+
+      if (missing.length > 0) {
+        const client = getSupabaseClient();
+        const { error } = await client.from(TABLE_NAME).insert(missing);
+        if (error) {
+          throw error;
+        }
+        didMutate = true;
+      }
+
+      const finalStatuses = didMutate ? await listStatuses() : statuses;
+      const orderMap = new Map(defaultStatuses.map((status) => [status.name.toLowerCase(), status.order]));
+      return finalStatuses
+        .filter((status) => orderMap.has(status.name.toLowerCase()))
+        .sort((a, b) => (orderMap.get(a.name.toLowerCase()) ?? a.order) - (orderMap.get(b.name.toLowerCase()) ?? b.order));
+    }
 
   const client = getSupabaseClient();
   const { data, error } = await client.from(TABLE_NAME).insert(defaultStatuses).select();
@@ -89,7 +100,14 @@ export async function ensureDefaultStatuses(): Promise<Status[]> {
     throw error;
   }
 
-  return (data ?? []).map((row) => mapStatus(row as { id: string; name: string; order: number; created_at: string }));
+    return (data ?? []).map((row) => mapStatus(row as { id: string; name: string; order: number; created_at: string }));
+  })();
+
+  try {
+    return await ensureStatusesPromise;
+  } finally {
+    ensureStatusesPromise = null;
+  }
 }
 
 export async function createStatus(input: Omit<Status, "id" | "createdAt">): Promise<Status> {

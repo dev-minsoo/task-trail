@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import ChatInputPreviewList, { ChatInputPreviewItem } from "@/components/ChatInputPreviewList";
 import { Badge } from "@/components/ui/badge";
@@ -61,46 +61,33 @@ export default function ChatInput({
   const isSendDisabled = isSubmitDisabled || !trimmedValue;
   const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const textareaRef = inputRef ?? internalTextareaRef;
-  const [isMultiline, setIsMultiline] = useState(false);
   const [activeCommandIndex, setActiveCommandIndex] = useState(0);
 
   const trimmedStartValue = value.trimStart();
   const commandToken = trimmedStartValue.split(/\s+/)[0] ?? "";
   const hasCommandArguments = trimmedStartValue.length > commandToken.length;
-  const commandMatch = useMemo(() => {
-    return commandItems.find(
-      (command) => trimmedStartValue === command.label || trimmedStartValue.startsWith(`${command.label} `)
-    );
-  }, [commandItems, trimmedStartValue]);
+  const commandMatch = commandItems.find(
+    (command) => trimmedStartValue === command.label || trimmedStartValue.startsWith(`${command.label} `)
+  );
   const commandPrefix = commandMatch?.label;
   const commandDisplayLabel = commandMatch?.displayLabel ?? commandPrefix;
   const commandPlaceholder = commandMatch?.placeholder;
-  const commandInputValue = useMemo(() => {
+  const commandInputValue = (() => {
     if (!commandPrefix) {
       return value;
     }
     const escaped = commandPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(`^\\s*${escaped}\\s*`);
     return value.replace(pattern, "");
-  }, [commandPrefix, value]);
+  })();
   const isCommandMode =
     isCommandAutocompleteEnabled && commandToken.startsWith("/") && !hasCommandArguments && !commandPrefix;
-  const filteredCommands = useMemo(
-    () =>
-      isCommandMode
-        ? commandItems.filter((command) => command.label.startsWith(commandToken))
-        : [],
-    [commandItems, commandToken, isCommandMode]
-  );
+  const filteredCommands =
+    isCommandMode ? commandItems.filter((command) => command.label.startsWith(commandToken)) : [];
   const isCommandMenuOpen = isCommandMode && filteredCommands.length > 0;
-
-  useEffect(() => {
-    if (!isCommandMenuOpen) {
-      setActiveCommandIndex(0);
-    } else if (activeCommandIndex >= filteredCommands.length) {
-      setActiveCommandIndex(0);
-    }
-  }, [activeCommandIndex, filteredCommands.length, isCommandMenuOpen]);
+  const activeIndex = isCommandMenuOpen
+    ? Math.min(activeCommandIndex, Math.max(filteredCommands.length - 1, 0))
+    : 0;
 
   const applyCommand = (command: CommandItem) => {
     onChange(`${command.label} `);
@@ -128,17 +115,21 @@ export default function ChatInput({
     if (isCommandMenuOpen) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setActiveCommandIndex((prev) => (prev + 1) % filteredCommands.length);
+        if (filteredCommands.length > 0) {
+          setActiveCommandIndex((prev) => (prev + 1) % filteredCommands.length);
+        }
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        setActiveCommandIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+        if (filteredCommands.length > 0) {
+          setActiveCommandIndex((prev) => (prev - 1 + filteredCommands.length) % filteredCommands.length);
+        }
         return;
       }
       if (event.key === "Enter") {
         event.preventDefault();
-        const selected = filteredCommands[activeCommandIndex];
+        const selected = filteredCommands[activeIndex];
         if (selected) {
           applyCommand(selected);
         }
@@ -158,8 +149,7 @@ export default function ChatInput({
     const maxHeight = 200;
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-    setIsMultiline(value.includes("\n"));
-  }, [value]);
+  }, [value, textareaRef]);
 
   return (
     <div className={cn("bg-transparent", className)}>
@@ -200,8 +190,10 @@ export default function ChatInput({
           ) : null}
 
           <div className="relative rounded-3xl border border-border/60 bg-card/95 shadow-lg backdrop-blur transition focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/40">
-            <div className={cn("flex gap-2 px-3 py-2", isMultiline ? "flex-col" : "flex-row items-center")}>
-              {!isMultiline && showAiStatusBadge && (
+            <div
+              className={cn("flex gap-2 px-3 py-2", value.includes("\n") ? "flex-col" : "flex-row items-center")}
+            >
+              {!value.includes("\n") && showAiStatusBadge && (
                 <Badge className="shrink-0 rounded-full border-border bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                   {aiStatusLabel}
                 </Badge>
@@ -221,10 +213,10 @@ export default function ChatInput({
                 disabled={isSubmitDisabled}
                 className={cn(
                   "scrollbar-thin min-h-0 resize-none border-0 bg-transparent text-sm leading-7 text-foreground shadow-none outline-none placeholder:text-muted-foreground focus-visible:ring-0",
-                  isMultiline ? "w-full" : "min-w-0 flex-1"
+                  value.includes("\n") ? "w-full" : "min-w-0 flex-1"
                 )}
               />
-              {isMultiline ? (
+              {value.includes("\n") ? (
                 <div className="flex items-center justify-between">
                   {showAiStatusBadge ? (
                     <Badge className="shrink-0 rounded-full border-border bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">

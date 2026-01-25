@@ -28,6 +28,10 @@ export type Database = {
           status_id: string;
           date: string;
           order: number;
+          started_at: string | null;
+          completed_at: string | null;
+          is_archived: boolean;
+          archived_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -37,6 +41,10 @@ export type Database = {
           status_id: string;
           date: string;
           order: number;
+          started_at?: string | null;
+          completed_at?: string | null;
+          is_archived?: boolean;
+          archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -45,8 +53,35 @@ export type Database = {
           status_id?: string;
           date?: string;
           order?: number;
+          started_at?: string | null;
+          completed_at?: string | null;
+          is_archived?: boolean;
+          archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      task_status_history: {
+        Row: {
+          id: string;
+          task_id: string;
+          from_status_id: string | null;
+          to_status_id: string;
+          changed_at: string;
+        };
+        Insert: {
+          id?: string;
+          task_id: string;
+          from_status_id?: string | null;
+          to_status_id: string;
+          changed_at?: string;
+        };
+        Update: {
+          task_id?: string;
+          from_status_id?: string | null;
+          to_status_id?: string;
+          changed_at?: string;
         };
         Relationships: [];
       };
