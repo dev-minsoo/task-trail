@@ -1,10 +1,12 @@
 "use client";
 
-import { DndContext, closestCenter, useDroppable } from "@dnd-kit/core";
+import { DndContext, DragOverlay, closestCenter, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { DragEndEvent } from "@dnd-kit/core";
+import type { DragCancelEvent, DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import { useState } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Inbox, ListTodo, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -46,6 +48,17 @@ const columnStyles: Record<
   },
 };
 
+function TaskCardContent({ task }: { task: Task }) {
+  return (
+    <>
+      <p className="font-medium text-foreground">{task.title}</p>
+      <Badge className="mt-2 w-fit rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {task.date || "No date"}
+      </Badge>
+    </>
+  );
+}
+
 function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
@@ -58,15 +71,12 @@ function TaskCard({ task, statusId }: { task: Task; statusId: string }) {
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground shadow-sm transition hover:border-foreground/20 hover:bg-muted/40",
-        isDragging && "opacity-60"
+        isDragging && "opacity-0"
       )}
       {...attributes}
       {...listeners}
     >
-      <p className="font-medium text-foreground">{task.title}</p>
-      <Badge className="mt-2 w-fit rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {task.date || "No date"}
-      </Badge>
+      <TaskCardContent task={task} />
     </Card>
   );
 }
@@ -117,14 +127,44 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
 
 export default function KanbanBoard({ statuses, tasks, onTaskDragEnd }: KanbanBoardProps) {
   const orderedStatuses = [...statuses].sort((a, b) => a.order - b.order);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeTask = tasks.find((task) => task.id === activeId);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
+    onTaskDragEnd(event);
+  };
+
+  const handleDragCancel = (_event: DragCancelEvent) => {
+    setActiveId(null);
+  };
 
   return (
-    <DndContext collisionDetection={closestCenter} onDragEnd={onTaskDragEnd}>
+    <DndContext
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
       <div className="grid gap-6 lg:grid-cols-3">
         {orderedStatuses.map((status) => (
           <StatusColumn key={status.id} status={status} tasks={tasks.filter((task) => task.statusId === status.id)} />
         ))}
       </div>
+      {createPortal(
+        <DragOverlay>
+          {activeTask ? (
+            <Card className="rounded-2xl border border-border bg-card/95 px-4 py-3 text-sm text-foreground shadow-xl ring-2 ring-primary/20 opacity-60">
+              <TaskCardContent task={activeTask} />
+            </Card>
+          ) : null}
+        </DragOverlay>,
+        document.body
+      )}
     </DndContext>
   );
 }
