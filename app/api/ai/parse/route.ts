@@ -18,6 +18,12 @@ type OpenAIResponse = {
   choices?: OpenAIChoice[];
 };
 
+type ParseResult = {
+  mode: "ai" | "fallback";
+  todo: string[];
+  message?: string;
+};
+
 function normalizeItems(content: string): ParsedItem[] {
   const trimmed = content.trim();
   if (!trimmed) {
@@ -78,8 +84,23 @@ function normalizeItems(content: string): ParsedItem[] {
   }
 }
 
+function fallbackResult(trimmed: string, message: string): ParseResult {
+  return {
+    mode: "fallback",
+    todo: trimmed ? [trimmed] : [],
+    message,
+  };
+}
+
 export async function POST(request: Request) {
-  const { text }: ParseRequest = await request.json();
+  let body: ParseRequest;
+  try {
+    body = (await request.json()) as ParseRequest;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const { text } = body;
   const trimmed = text?.trim() ?? "";
 
   if (!trimmed) {
@@ -88,43 +109,58 @@ export async function POST(request: Request) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({
-      mode: "fallback",
-      todo: [trimmed],
-      message: "AI disabled",
-    });
+    return NextResponse.json(fallbackResult(trimmed, "AI disabled"));
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You convert a user input into natural, concise TODOs. Output Format: {\"todo\":[\"todo1\",\"todo2\"]}. Use natural task phrasing in the same language as the input (Korean or English) and fix spacing. Respond with only JSON, no code fences. Today is " +
-            today +
-            ".",
-        },
-        { role: "user", content: trimmed },
-      ],
-      temperature: 0.2,
-    }),
-  });
+  const configuredModel = process.env.OPENAI_MODEL?.trim();
+  const modelCandidates = Array.from(
+    new Set([configuredModel, "gpt-4.1-mini", "gpt-4o-mini"].filter((value): value is string => Boolean(value)))
+  );
 
-  if (!response.ok) {
-    return NextResponse.json({ error: "Failed to parse input" }, { status: 502 });
+  try {
+    for (const model of modelCandidates) {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You convert a user input into natural, concise TODOs. Output Format: {\"todo\":[\"todo1\",\"todo2\"]}. Use natural task phrasing in the same language as the input (Korean or English) and fix spacing. Respond with only JSON, no code fences. Today is " +
+                today +
+                ".",
+            },
+            { role: "user", content: trimmed },
+          ],
+          temperature: 0.2,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("AI parse upstream failed", {
+          status: response.status,
+          model,
+          body: errorText.slice(0, 500),
+        });
+        continue;
+      }
+
+      const data: OpenAIResponse = await response.json();
+      const content = data.choices?.[0]?.message?.content ?? "";
+      const items = normalizeItems(content);
+
+      return NextResponse.json({ mode: "ai", todo: items.map((item) => item.title) });
+    }
+  } catch (error) {
+    console.error("AI parse request failed", error);
   }
 
-  const data: OpenAIResponse = await response.json();
-  const content = data.choices?.[0]?.message?.content ?? "";
-  const items = normalizeItems(content);
-
-  return NextResponse.json({ mode: "ai", todo: items.map((item) => item.title) });
+  return NextResponse.json(fallbackResult(trimmed, "AI unavailable"));
 }

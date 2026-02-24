@@ -43,6 +43,7 @@ Open [http://localhost:3000](http://localhost:3000).
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 OPENAI_API_KEY=sk-your-openai-key
+OPENAI_MODEL=gpt-4.1-mini
 ```
 
 4. Create tables in **SQL Editor**:
@@ -83,4 +84,15 @@ Set `OPENAI_API_KEY` in `.env.local` to enable AI task suggestions. Leave it bla
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `OPENAI_API_KEY` (optional)
+   - `OPENAI_MODEL` (optional, default: `gpt-4.1-mini`)
 4. Deploy.
+
+## AI 502 Troubleshooting
+
+If `/api/ai/parse` returns `502` in older versions, it usually means the upstream OpenAI request failed (invalid key, model access, quota, or temporary API issues).
+
+Current behavior falls back to non-AI parsing instead of hard-failing, but you should still verify:
+
+- `OPENAI_API_KEY` is valid in Vercel project settings.
+- `OPENAI_MODEL` is available for your key.
+- Vercel Function logs for `/api/ai/parse` show no repeated upstream auth/quota errors.
