@@ -78,6 +78,20 @@ const getDefaultDateRange = () => {
   return { start: formatDateInput(startDate), end };
 };
 
+const getLastNDaysRange = (days: number) => {
+  const today = new Date();
+  const end = formatDateInput(today);
+  const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  startDate.setDate(startDate.getDate() - (days - 1));
+  return { start: formatDateInput(startDate), end };
+};
+
+const getCurrentMonthRange = () => {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  return { start: formatDateInput(start), end: formatDateInput(today) };
+};
+
 const parseDateStart = (value: string) => {
   const [year, month, day] = value.split("-").map((part) => Number(part));
   if (!year || !month || !day) {
@@ -125,6 +139,7 @@ function HomeContent() {
   const [isRangeOpen, setIsRangeOpen] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultDateRange());
   const [draftRange, setDraftRange] = useState<DateRange>(() => getDefaultDateRange());
+  const rangePanelRef = useRef<HTMLDivElement | null>(null);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
   const submitFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusInput = useCallback(() => {
@@ -220,6 +235,23 @@ function HomeContent() {
     }, 4500);
     return () => clearTimeout(timeoutId);
   }, [clearErrorMessage, errorMessage]);
+
+  useEffect(() => {
+    if (!isRangeOpen) {
+      return;
+    }
+    const handleOutsideMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (!rangePanelRef.current?.contains(target)) {
+        setIsRangeOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideMouseDown);
+    return () => document.removeEventListener("mousedown", handleOutsideMouseDown);
+  }, [isRangeOpen]);
 
   const statusByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -527,6 +559,13 @@ function HomeContent() {
     setIsRangeOpen(false);
   };
 
+  const handleApplyQuickRange = (preset: "last7" | "thisMonth") => {
+    const nextRange = preset === "last7" ? getLastNDaysRange(7) : getCurrentMonthRange();
+    setDraftRange(nextRange);
+    setDateRange(nextRange);
+    setIsRangeOpen(false);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar />
@@ -549,7 +588,7 @@ function HomeContent() {
                 onTabChangeAction={setActiveListStatus}
                 showTabs={activeView === "list"}
                 actions={
-                  <div className="relative">
+                  <div ref={rangePanelRef} className="relative">
                     <Button
                       type="button"
                       variant="outline"
@@ -575,6 +614,26 @@ function HomeContent() {
                               Date range
                             </p>
                             <span className="text-[10px] text-muted-foreground">{rangeLabel}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.15em]"
+                              onClick={() => handleApplyQuickRange("last7")}
+                            >
+                              Last 7 days
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 rounded-full px-3 text-[10px] font-semibold uppercase tracking-[0.15em]"
+                              onClick={() => handleApplyQuickRange("thisMonth")}
+                            >
+                              This month
+                            </Button>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
