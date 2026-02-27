@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, X } from "lucide-react";
 import ChatInput from "@/components/ChatInput";
 import KanbanBoard from "@/components/KanbanBoard";
 import Sidebar from "@/components/Sidebar";
@@ -209,6 +210,16 @@ function HomeContent() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!errorMessage) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      clearErrorMessage();
+    }, 4500);
+    return () => clearTimeout(timeoutId);
+  }, [clearErrorMessage, errorMessage]);
 
   const statusByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -598,17 +609,6 @@ function HomeContent() {
                   </div>
                 }
               />
-              {errorMessage ? (
-                <Card className="border-destructive/40 bg-destructive/5 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-destructive">{errorMessage}</p>
-                    <Button type="button" variant="ghost" size="sm" onClick={clearErrorMessage}>
-                      Dismiss
-                    </Button>
-                  </div>
-                </Card>
-              ) : null}
-
               {isLoading ? (
                 <div className="flex min-h-[240px] w-full items-center justify-center">
                   <div className="flex items-center gap-3 text-muted-foreground">
@@ -659,6 +659,29 @@ function HomeContent() {
           className="sticky bottom-4 px-8 md:px-12"
         />
       </div>
+      {errorMessage ? (
+        <div className="pointer-events-none fixed inset-x-4 bottom-5 z-50 flex justify-end">
+          <Card className="pointer-events-auto w-full max-w-md border-destructive/40 bg-card/95 px-4 py-3 shadow-xl backdrop-blur">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-destructive">Action failed</p>
+                <p className="mt-1 text-sm text-foreground">{errorMessage}</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={clearErrorMessage}
+                className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                aria-label="Dismiss error"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
     </div>
   );
 }

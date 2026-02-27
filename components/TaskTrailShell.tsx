@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { TaskTrailProvider } from "@/components/TaskTrailContext";
 import type { Status, Task } from "@/lib/types";
@@ -43,12 +43,12 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   const inProgressStatusId = statusByName.get(STATUS_IN_PROGRESS.toLowerCase());
   const doneStatusId = statusByName.get(STATUS_DONE.toLowerCase());
   const primaryStatusId = inboxStatusId ?? orderedStatuses[0]?.id;
-  const clearErrorMessage = () => setErrorMessage(null);
-  const reportMutationError = (action: string, error: unknown) => {
+  const clearErrorMessage = useCallback(() => setErrorMessage(null), []);
+  const reportMutationError = useCallback((action: string, error: unknown) => {
     const message = `${action} failed: ${getErrorMessage(error)}`;
     console.error(message, error);
     setErrorMessage(message);
-  };
+  }, []);
 
   const resolveDateForStatus = (statusId: string, currentDate: string) => {
     if (statusId === inboxStatusId) {
