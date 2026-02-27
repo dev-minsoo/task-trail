@@ -122,6 +122,11 @@ function HomeContent() {
   const [isRangeOpen, setIsRangeOpen] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultDateRange());
   const [draftRange, setDraftRange] = useState<DateRange>(() => getDefaultDateRange());
+  const focusInput = useCallback(() => {
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+  }, []);
 
   const commandItems = useMemo(
     () => [
@@ -180,8 +185,8 @@ function HomeContent() {
     if (isLoading) {
       return;
     }
-    inputRef.current?.focus();
-  }, [isLoading]);
+    focusInput();
+  }, [focusInput, isLoading]);
 
   const statusByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -282,13 +287,17 @@ function HomeContent() {
         return;
       }
       setIsParsing(true);
+      let shouldRefocus = false;
       try {
         await addTask({ title, statusId: inboxStatusId, date: "" });
         setNewTaskTitle("");
         setAiStatusLabel(null);
-        inputRef.current?.focus();
+        shouldRefocus = true;
       } finally {
         setIsParsing(false);
+        if (shouldRefocus) {
+          focusInput();
+        }
       }
       return;
     }
@@ -346,8 +355,8 @@ function HomeContent() {
   const handlePreviewCancel = useCallback(() => {
     setPreviewItems([]);
     setAiStatusLabel(null);
-    inputRef.current?.focus();
-  }, []);
+    focusInput();
+  }, [focusInput]);
 
   const handlePreviewConfirm = useCallback(async () => {
     if (!inboxStatusId) {
@@ -360,6 +369,7 @@ function HomeContent() {
     }
 
     setIsSavingPreview(true);
+    let shouldRefocus = false;
     try {
       await addTasks(
         selected.map((item) => ({
@@ -369,11 +379,14 @@ function HomeContent() {
       );
       setPreviewItems([]);
       setAiStatusLabel(null);
-      inputRef.current?.focus();
+      shouldRefocus = true;
     } finally {
       setIsSavingPreview(false);
+      if (shouldRefocus) {
+        focusInput();
+      }
     }
-  }, [addTasks, inboxStatusId, previewItems]);
+  }, [addTasks, focusInput, inboxStatusId, previewItems]);
 
   useEffect(() => {
     if (!isPreviewing) {
