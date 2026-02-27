@@ -3,7 +3,7 @@
 import { DndContext, DragOverlay, closestCenter, useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { DragCancelEvent, DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -139,7 +139,7 @@ export default function KanbanBoard({ statuses, tasks, onTaskDragEnd }: KanbanBo
     onTaskDragEnd(event);
   };
 
-  const handleDragCancel = (_event: DragCancelEvent) => {
+  const handleDragCancel = () => {
     setActiveId(null);
   };
 

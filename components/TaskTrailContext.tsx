@@ -9,6 +9,8 @@ export type TaskTrailContextValue = {
   setSelectedDate: (date: string) => void;
   statuses: Status[];
   tasks: Task[];
+  errorMessage: string | null;
+  clearErrorMessage: () => void;
   isBootstrapping: boolean;
   newTaskTitle: string;
   setNewTaskTitle: (value: string) => void;

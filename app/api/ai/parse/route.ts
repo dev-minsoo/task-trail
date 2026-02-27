@@ -24,6 +24,8 @@ type ParseResult = {
   message?: string;
 };
 
+const DEFAULT_TIMEOUT_MS = 10_000;
+
 function normalizeItems(content: string): ParsedItem[] {
   const trimmed = content.trim();
   if (!trimmed) {
@@ -92,6 +94,23 @@ function fallbackResult(trimmed: string, message: string): ParseResult {
   };
 }
 
+function mapUpstreamErrorToMessage(status: number, errorText: string) {
+  const lowerText = errorText.toLowerCase();
+  if (status === 429 || lowerText.includes("insufficient_quota")) {
+    return "AI credit is exhausted";
+  }
+  if (status === 401 || status === 403) {
+    return "AI authentication failed";
+  }
+  if (lowerText.includes("model_not_found") || lowerText.includes("does not exist")) {
+    return "AI model unavailable";
+  }
+  if (status >= 500) {
+    return "AI service temporarily unavailable";
+  }
+  return "AI unavailable";
+}
+
 export async function POST(request: Request) {
   let body: ParseRequest;
   try {
@@ -114,36 +133,59 @@ export async function POST(request: Request) {
 
   const today = new Date().toISOString().slice(0, 10);
   const configuredModel = process.env.OPENAI_MODEL?.trim();
+  const configuredTimeout = Number(process.env.OPENAI_TIMEOUT_MS);
+  const timeoutMs =
+    Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : DEFAULT_TIMEOUT_MS;
   const modelCandidates = Array.from(
     new Set([configuredModel, "gpt-4.1-mini", "gpt-4o-mini"].filter((value): value is string => Boolean(value)))
   );
+  let fallbackMessage = "AI unavailable";
 
   try {
     for (const model of modelCandidates) {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      let response: Response;
+      try {
+        response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You convert a user input into natural, concise TODOs. Output Format: {\"todo\":[\"todo1\",\"todo2\"]}. Use natural task phrasing in the same language as the input (Korean or English) and fix spacing. Respond with only JSON, no code fences. Today is " +
+                  today +
+                  ".",
+              },
+              { role: "user", content: trimmed },
+            ],
+            temperature: 0.2,
+          }),
+        });
+      } catch (error) {
+        const isTimeout = (error as { name?: string }).name === "AbortError";
+        fallbackMessage = isTimeout ? "AI request timed out" : "AI unavailable";
+        console.error("AI parse upstream request failed", {
           model,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You convert a user input into natural, concise TODOs. Output Format: {\"todo\":[\"todo1\",\"todo2\"]}. Use natural task phrasing in the same language as the input (Korean or English) and fix spacing. Respond with only JSON, no code fences. Today is " +
-                today +
-                ".",
-            },
-            { role: "user", content: trimmed },
-          ],
-          temperature: 0.2,
-        }),
-      });
+          isTimeout,
+          timeoutMs,
+          error,
+        });
+        continue;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
+        fallbackMessage = mapUpstreamErrorToMessage(response.status, errorText);
         console.error("AI parse upstream failed", {
           status: response.status,
           model,
@@ -162,5 +204,5 @@ export async function POST(request: Request) {
     console.error("AI parse request failed", error);
   }
 
-  return NextResponse.json(fallbackResult(trimmed, "AI unavailable"));
+  return NextResponse.json(fallbackResult(trimmed, fallbackMessage));
 }

@@ -14,10 +14,21 @@ const STATUS_INBOX = "Inbox";
 const STATUS_IN_PROGRESS = "In Progress";
 const STATUS_DONE = "Done";
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+  return "Unexpected error";
+};
+
 export default function TaskTrailShell({ children }: { children: React.ReactNode }) {
   const [selectedDate, setSelectedDate] = useState<string>(today());
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newStatusName, setNewStatusName] = useState("");
@@ -32,6 +43,12 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   const inProgressStatusId = statusByName.get(STATUS_IN_PROGRESS.toLowerCase());
   const doneStatusId = statusByName.get(STATUS_DONE.toLowerCase());
   const primaryStatusId = inboxStatusId ?? orderedStatuses[0]?.id;
+  const clearErrorMessage = () => setErrorMessage(null);
+  const reportMutationError = (action: string, error: unknown) => {
+    const message = `${action} failed: ${getErrorMessage(error)}`;
+    console.error(message, error);
+    setErrorMessage(message);
+  };
 
   const resolveDateForStatus = (statusId: string, currentDate: string) => {
     if (statusId === inboxStatusId) {
@@ -101,12 +118,18 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     if (!title || !statusId) {
       return;
     }
-    const baseDate = overrides?.date ?? (statusId === inboxStatusId ? "" : selectedDate);
-    const date = resolveDateForStatus(statusId, baseDate);
-    const nextOrder = Math.max(0, ...tasks.filter((task) => task.statusId === statusId).map((task) => task.order)) + 1;
-    const created = await createTask({ title, statusId, date, order: nextOrder });
-    setTasks((prev) => [...prev, created]);
-    setNewTaskTitle("");
+    try {
+      setErrorMessage(null);
+      const baseDate = overrides?.date ?? (statusId === inboxStatusId ? "" : selectedDate);
+      const date = resolveDateForStatus(statusId, baseDate);
+      const nextOrder =
+        Math.max(0, ...tasks.filter((task) => task.statusId === statusId).map((task) => task.order)) + 1;
+      const created = await createTask({ title, statusId, date, order: nextOrder });
+      setTasks((prev) => [...prev, created]);
+      setNewTaskTitle("");
+    } catch (error) {
+      reportMutationError("Add task", error);
+    }
   };
 
   const handleAddTasks = async (items: Array<{ title: string; statusId?: string; date?: string }>) => {
@@ -153,9 +176,14 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       });
     });
 
-    const created = await createTasks(payload);
-    if (created.length > 0) {
-      setTasks((prev) => [...prev, ...created]);
+    try {
+      setErrorMessage(null);
+      const created = await createTasks(payload);
+      if (created.length > 0) {
+        setTasks((prev) => [...prev, ...created]);
+      }
+    } catch (error) {
+      reportMutationError("Add tasks", error);
     }
   };
 
@@ -164,41 +192,52 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     if (!task) {
       return;
     }
-    const resolvedDate = resolveDateForStatus(statusId, task.date);
-    const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === statusId).map((item) => item.order)) + 1;
-    const now = new Date().toISOString();
-    const updates: Parameters<typeof updateTask>[1] = {
-      statusId,
-      order: nextOrder,
-      date: resolvedDate,
-    };
+    try {
+      setErrorMessage(null);
+      const resolvedDate = resolveDateForStatus(statusId, task.date);
+      const nextOrder =
+        Math.max(0, ...tasks.filter((item) => item.statusId === statusId).map((item) => item.order)) + 1;
+      const now = new Date().toISOString();
+      const updates: Parameters<typeof updateTask>[1] = {
+        statusId,
+        order: nextOrder,
+        date: resolvedDate,
+      };
 
-    if (statusId === inboxStatusId) {
-      updates.startedAt = null;
-      updates.completedAt = null;
-    }
-    if (statusId === inProgressStatusId && !task.startedAt) {
-      updates.startedAt = now;
-    }
-    if (statusId === doneStatusId) {
-      updates.completedAt = now;
-    } else {
-      updates.completedAt = null;
-    }
+      if (statusId === inboxStatusId) {
+        updates.startedAt = null;
+        updates.completedAt = null;
+      }
+      if (statusId === inProgressStatusId && !task.startedAt) {
+        updates.startedAt = now;
+      }
+      if (statusId === doneStatusId) {
+        updates.completedAt = now;
+      } else {
+        updates.completedAt = null;
+      }
 
-    const updated = await updateTask(taskId, updates);
-    setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
-    await createTaskStatusHistory({
-      taskId,
-      fromStatusId: task.statusId,
-      toStatusId: statusId,
-      changedAt: now,
-    });
+      const updated = await updateTask(taskId, updates);
+      setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
+      await createTaskStatusHistory({
+        taskId,
+        fromStatusId: task.statusId,
+        toStatusId: statusId,
+        changedAt: now,
+      });
+    } catch (error) {
+      reportMutationError("Update task status", error);
+    }
   };
 
   const handleDeleteTask = async (taskId: string) => {
-    await deleteTask(taskId);
-    setTasks((prev) => prev.filter((task) => task.id !== taskId));
+    try {
+      setErrorMessage(null);
+      await deleteTask(taskId);
+      setTasks((prev) => prev.filter((task) => task.id !== taskId));
+    } catch (error) {
+      reportMutationError("Delete task", error);
+    }
   };
 
   const handleTaskDragEnd = async (event: DragEndEvent) => {
@@ -217,82 +256,91 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       return;
     }
 
-    const targetTasks = tasks.filter((task) => task.statusId === targetContainerId).sort((a, b) => a.order - b.order);
-    const sourceTasks = tasks.filter((task) => task.statusId === activeTask.statusId).sort((a, b) => a.order - b.order);
+    const previousTasks = tasks;
+    try {
+      setErrorMessage(null);
+      const targetTasks = tasks.filter((task) => task.statusId === targetContainerId).sort((a, b) => a.order - b.order);
+      const sourceTasks = tasks.filter((task) => task.statusId === activeTask.statusId).sort((a, b) => a.order - b.order);
 
-    const isSameContainer = activeTask.statusId === targetContainerId;
+      const isSameContainer = activeTask.statusId === targetContainerId;
 
-    if (isSameContainer) {
-      const activeIndex = sourceTasks.findIndex((task) => task.id === active.id);
-      const rawOverIndex = sourceTasks.findIndex((task) => task.id === over.id);
-      const overIndex = rawOverIndex === -1 ? sourceTasks.length - 1 : rawOverIndex;
-      const reordered = reorder(sourceTasks, activeIndex, overIndex).map((task, index) => ({ ...task, order: index + 1 }));
+      if (isSameContainer) {
+        const activeIndex = sourceTasks.findIndex((task) => task.id === active.id);
+        const rawOverIndex = sourceTasks.findIndex((task) => task.id === over.id);
+        const overIndex = rawOverIndex === -1 ? sourceTasks.length - 1 : rawOverIndex;
+        const reordered = reorder(sourceTasks, activeIndex, overIndex).map((task, index) => ({ ...task, order: index + 1 }));
+
+        setTasks((prev) =>
+          prev.map((task) => {
+            const updated = reordered.find((item) => item.id === task.id);
+            return updated ? updated : task;
+          })
+        );
+
+        await Promise.all(reordered.map((task) => updateTask(task.id, { order: task.order })));
+        return;
+      }
+
+      const overIndex = targetTasks.findIndex((task) => task.id === over.id);
+      const insertIndex = overIndex === -1 ? targetTasks.length : overIndex;
+      const updatedTarget = [...targetTasks];
+      const nextDate = resolveDateForStatus(targetContainerId, activeTask.date);
+      updatedTarget.splice(insertIndex, 0, { ...activeTask, statusId: targetContainerId, date: nextDate });
+
+      const normalizedTarget = updatedTarget.map((task, index) => ({ ...task, order: index + 1 }));
+      const normalizedSource = sourceTasks
+        .filter((task) => task.id !== activeTask.id)
+        .map((task, index) => ({ ...task, order: index + 1 }));
 
       setTasks((prev) =>
         prev.map((task) => {
-          const updated = reordered.find((item) => item.id === task.id);
+          const updated = [...normalizedTarget, ...normalizedSource].find((item) => item.id === task.id);
           return updated ? updated : task;
         })
       );
 
-      await Promise.all(reordered.map((task) => updateTask(task.id, { order: task.order })));
-      return;
-    }
+      const now = new Date().toISOString();
+      const movedTask = normalizedTarget.find((task) => task.id === activeTask.id);
+      const movedStatusId = movedTask?.statusId ?? activeTask.statusId;
+      const statusUpdates: Parameters<typeof updateTask>[1] = {
+        statusId: movedStatusId,
+        order: movedTask?.order ?? activeTask.order,
+        date: movedTask?.date ?? activeTask.date,
+      };
 
-    const overIndex = targetTasks.findIndex((task) => task.id === over.id);
-    const insertIndex = overIndex === -1 ? targetTasks.length : overIndex;
-    const updatedTarget = [...targetTasks];
-    const nextDate = resolveDateForStatus(targetContainerId, activeTask.date);
-    updatedTarget.splice(insertIndex, 0, { ...activeTask, statusId: targetContainerId, date: nextDate });
+      if (movedStatusId === inboxStatusId) {
+        statusUpdates.startedAt = null;
+        statusUpdates.completedAt = null;
+      }
+      if (movedStatusId === inProgressStatusId && !activeTask.startedAt) {
+        statusUpdates.startedAt = now;
+      }
+      if (movedStatusId === doneStatusId) {
+        statusUpdates.completedAt = now;
+      } else {
+        statusUpdates.completedAt = null;
+      }
 
-    const normalizedTarget = updatedTarget.map((task, index) => ({ ...task, order: index + 1 }));
-    const normalizedSource = sourceTasks.filter((task) => task.id !== activeTask.id).map((task, index) => ({ ...task, order: index + 1 }));
+      await Promise.all([
+        ...normalizedTarget.map((task) =>
+          task.id === activeTask.id
+            ? updateTask(task.id, statusUpdates)
+            : updateTask(task.id, { order: task.order })
+        ),
+        ...normalizedSource.map((task) => updateTask(task.id, { order: task.order })),
+      ]);
 
-    setTasks((prev) =>
-      prev.map((task) => {
-        const updated = [...normalizedTarget, ...normalizedSource].find((item) => item.id === task.id);
-        return updated ? updated : task;
-      })
-    );
-
-    const now = new Date().toISOString();
-    const movedTask = normalizedTarget.find((task) => task.id === activeTask.id);
-    const movedStatusId = movedTask?.statusId ?? activeTask.statusId;
-    const statusUpdates: Parameters<typeof updateTask>[1] = {
-      statusId: movedStatusId,
-      order: movedTask?.order ?? activeTask.order,
-      date: movedTask?.date ?? activeTask.date,
-    };
-
-    if (movedStatusId === inboxStatusId) {
-      statusUpdates.startedAt = null;
-      statusUpdates.completedAt = null;
-    }
-    if (movedStatusId === inProgressStatusId && !activeTask.startedAt) {
-      statusUpdates.startedAt = now;
-    }
-    if (movedStatusId === doneStatusId) {
-      statusUpdates.completedAt = now;
-    } else {
-      statusUpdates.completedAt = null;
-    }
-
-    await Promise.all([
-      ...normalizedTarget.map((task) =>
-        task.id === activeTask.id
-          ? updateTask(task.id, statusUpdates)
-          : updateTask(task.id, { order: task.order })
-      ),
-      ...normalizedSource.map((task) => updateTask(task.id, { order: task.order })),
-    ]);
-
-    if (activeTask.statusId !== movedStatusId) {
-      await createTaskStatusHistory({
-        taskId: activeTask.id,
-        fromStatusId: activeTask.statusId,
-        toStatusId: movedStatusId,
-        changedAt: now,
-      });
+      if (activeTask.statusId !== movedStatusId) {
+        await createTaskStatusHistory({
+          taskId: activeTask.id,
+          fromStatusId: activeTask.statusId,
+          toStatusId: movedStatusId,
+          changedAt: now,
+        });
+      }
+    } catch (error) {
+      setTasks(previousTasks);
+      reportMutationError("Move task", error);
     }
   };
 
@@ -309,38 +357,44 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       return;
     }
 
-    const isDone = task.statusId === doneStatusId;
-    const nextStatusId = isDone ? fallbackStatusId : doneStatusId;
-    const resolvedDate = isDone ? resolveDateForStatus(nextStatusId, task.date) : task.date;
-    const nextOrder = Math.max(0, ...tasks.filter((item) => item.statusId === nextStatusId).map((item) => item.order)) + 1;
-    const now = new Date().toISOString();
-    const updates: Parameters<typeof updateTask>[1] = {
-      statusId: nextStatusId,
-      order: nextOrder,
-      date: resolvedDate,
-    };
+    try {
+      setErrorMessage(null);
+      const isDone = task.statusId === doneStatusId;
+      const nextStatusId = isDone ? fallbackStatusId : doneStatusId;
+      const resolvedDate = isDone ? resolveDateForStatus(nextStatusId, task.date) : task.date;
+      const nextOrder =
+        Math.max(0, ...tasks.filter((item) => item.statusId === nextStatusId).map((item) => item.order)) + 1;
+      const now = new Date().toISOString();
+      const updates: Parameters<typeof updateTask>[1] = {
+        statusId: nextStatusId,
+        order: nextOrder,
+        date: resolvedDate,
+      };
 
-    if (nextStatusId === inboxStatusId) {
-      updates.startedAt = null;
-      updates.completedAt = null;
-    }
-    if (nextStatusId === inProgressStatusId && !task.startedAt) {
-      updates.startedAt = now;
-    }
-    if (nextStatusId === doneStatusId) {
-      updates.completedAt = now;
-    } else {
-      updates.completedAt = null;
-    }
+      if (nextStatusId === inboxStatusId) {
+        updates.startedAt = null;
+        updates.completedAt = null;
+      }
+      if (nextStatusId === inProgressStatusId && !task.startedAt) {
+        updates.startedAt = now;
+      }
+      if (nextStatusId === doneStatusId) {
+        updates.completedAt = now;
+      } else {
+        updates.completedAt = null;
+      }
 
-    const updated = await updateTask(taskId, updates);
-    setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
-    await createTaskStatusHistory({
-      taskId,
-      fromStatusId: task.statusId,
-      toStatusId: nextStatusId,
-      changedAt: now,
-    });
+      const updated = await updateTask(taskId, updates);
+      setTasks((prev) => prev.map((item) => (item.id === taskId ? updated : item)));
+      await createTaskStatusHistory({
+        taskId,
+        fromStatusId: task.statusId,
+        toStatusId: nextStatusId,
+        changedAt: now,
+      });
+    } catch (error) {
+      reportMutationError("Toggle task done", error);
+    }
   };
 
   const handleAddStatus = async () => {
@@ -348,23 +402,38 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     if (!name) {
       return;
     }
-    const nextOrder = Math.max(0, ...statuses.map((status) => status.order)) + 1;
-    const created = await createStatus({ name, order: nextOrder });
-    setStatuses((prev) => [...prev, created]);
-    setNewStatusName("");
+    try {
+      setErrorMessage(null);
+      const nextOrder = Math.max(0, ...statuses.map((status) => status.order)) + 1;
+      const created = await createStatus({ name, order: nextOrder });
+      setStatuses((prev) => [...prev, created]);
+      setNewStatusName("");
+    } catch (error) {
+      reportMutationError("Add status", error);
+    }
   };
 
   const handleRenameStatus = async (statusId: string, name: string) => {
-    const updated = await updateStatus(statusId, { name });
-    setStatuses((prev) => prev.map((status) => (status.id === statusId ? updated : status)));
+    try {
+      setErrorMessage(null);
+      const updated = await updateStatus(statusId, { name });
+      setStatuses((prev) => prev.map((status) => (status.id === statusId ? updated : status)));
+    } catch (error) {
+      reportMutationError("Rename status", error);
+    }
   };
 
   const handleDeleteStatus = async (statusId: string) => {
-    const remainingStatuses = statuses.filter((status) => status.id !== statusId);
-    await deleteStatus(statusId);
-    await Promise.all(tasks.filter((task) => task.statusId === statusId).map((task) => deleteTask(task.id)));
-    setStatuses(remainingStatuses);
-    setTasks((prev) => prev.filter((task) => task.statusId !== statusId));
+    try {
+      setErrorMessage(null);
+      const remainingStatuses = statuses.filter((status) => status.id !== statusId);
+      await deleteStatus(statusId);
+      await Promise.all(tasks.filter((task) => task.statusId === statusId).map((task) => deleteTask(task.id)));
+      setStatuses(remainingStatuses);
+      setTasks((prev) => prev.filter((task) => task.statusId !== statusId));
+    } catch (error) {
+      reportMutationError("Delete status", error);
+    }
   };
 
   const handleStatusDragEnd = async (event: DragEndEvent) => {
@@ -373,15 +442,22 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
       return;
     }
 
-    const activeIndex = orderedStatuses.findIndex((status) => status.id === active.id);
-    const overIndex = orderedStatuses.findIndex((status) => status.id === over.id);
-    const reordered = reorder(orderedStatuses, activeIndex, overIndex).map((status, index) => ({
-      ...status,
-      order: index + 1,
-    }));
+    const previousStatuses = orderedStatuses;
+    try {
+      setErrorMessage(null);
+      const activeIndex = orderedStatuses.findIndex((status) => status.id === active.id);
+      const overIndex = orderedStatuses.findIndex((status) => status.id === over.id);
+      const reordered = reorder(orderedStatuses, activeIndex, overIndex).map((status, index) => ({
+        ...status,
+        order: index + 1,
+      }));
 
-    setStatuses(reordered);
-    await Promise.all(reordered.map((status) => updateStatus(status.id, { order: status.order })));
+      setStatuses(reordered);
+      await Promise.all(reordered.map((status) => updateStatus(status.id, { order: status.order })));
+    } catch (error) {
+      setStatuses(previousStatuses);
+      reportMutationError("Reorder status", error);
+    }
   };
 
 
@@ -390,6 +466,8 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     setSelectedDate,
     statuses: orderedStatuses,
     tasks,
+    errorMessage,
+    clearErrorMessage,
     isBootstrapping,
     newTaskTitle,
     setNewTaskTitle,

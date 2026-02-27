@@ -103,6 +103,8 @@ function HomeContent() {
     addTasks,
     statuses,
     tasks,
+    errorMessage,
+    clearErrorMessage,
     isBootstrapping,
     changeTaskStatus,
     deleteTaskById,
@@ -318,6 +320,14 @@ function HomeContent() {
       });
 
       if (!response.ok) {
+        let message = "AI unavailable";
+        try {
+          const errorData = (await response.json()) as { error?: string; message?: string };
+          message = errorData.message ?? errorData.error ?? message;
+        } catch {
+          // keep default message
+        }
+        setAiStatusLabel(message);
         return;
       }
 
@@ -336,7 +346,9 @@ function HomeContent() {
 
       setPreviewItems(items);
       setNewTaskTitle("");
-      setAiStatusLabel(data.mode === "fallback" ? "AI disabled" : null);
+      setAiStatusLabel(data.mode === "fallback" ? data.message ?? "AI unavailable" : null);
+    } catch {
+      setAiStatusLabel("AI unavailable");
     } finally {
       setIsParsing(false);
     }
@@ -564,6 +576,16 @@ function HomeContent() {
                   </div>
                 }
               />
+              {errorMessage ? (
+                <Card className="border-destructive/40 bg-destructive/5 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-destructive">{errorMessage}</p>
+                    <Button type="button" variant="ghost" size="sm" onClick={clearErrorMessage}>
+                      Dismiss
+                    </Button>
+                  </div>
+                </Card>
+              ) : null}
 
               {isLoading ? (
                 <div className="flex min-h-[240px] w-full items-center justify-center">
