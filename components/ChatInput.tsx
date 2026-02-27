@@ -16,6 +16,7 @@ interface ChatInputProps {
   previewItems?: ChatInputPreviewItem[];
   onPreviewTitleChange?: (id: string, value: string) => void;
   onPreviewToggleSelect?: (id: string) => void;
+  onPreviewToggleSelectAll?: () => void;
   onPreviewConfirm?: () => void;
   onPreviewCancel?: () => void;
   previewStatusText?: string;
@@ -47,6 +48,7 @@ export default function ChatInput({
   previewItems,
   onPreviewTitleChange,
   onPreviewToggleSelect,
+  onPreviewToggleSelectAll,
   onPreviewConfirm,
   onPreviewCancel,
   previewStatusText,
@@ -275,6 +277,7 @@ export default function ChatInput({
             items={previewItems}
             onTitleChange={onPreviewTitleChange}
             onToggleSelect={onPreviewToggleSelect}
+            onToggleSelectAll={onPreviewToggleSelectAll}
             onConfirm={onPreviewConfirm}
             onCancel={onPreviewCancel}
             statusText={previewStatusText}

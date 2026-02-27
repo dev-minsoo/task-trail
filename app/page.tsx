@@ -397,6 +397,17 @@ function HomeContent() {
     );
   };
 
+  const handlePreviewToggleSelectAll = useCallback(() => {
+    setPreviewItems((prev) => {
+      if (prev.length === 0) {
+        return prev;
+      }
+      const selectedCount = prev.filter((item) => item.isSelected).length;
+      const shouldSelectAll = selectedCount !== prev.length;
+      return prev.map((item) => ({ ...item, isSelected: shouldSelectAll }));
+    });
+  }, []);
+
   const handlePreviewCancel = useCallback(() => {
     setPreviewItems([]);
     setAiStatusLabel(null);
@@ -645,6 +656,7 @@ function HomeContent() {
           }))}
           onPreviewTitleChange={handlePreviewTitleChange}
           onPreviewToggleSelect={handlePreviewToggleSelect}
+          onPreviewToggleSelectAll={handlePreviewToggleSelectAll}
           onPreviewCancel={handlePreviewCancel}
           onPreviewConfirm={() => void handlePreviewConfirm()}
           isPreviewLoading={isSavingPreview}

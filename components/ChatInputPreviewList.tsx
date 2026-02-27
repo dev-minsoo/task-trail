@@ -19,6 +19,7 @@ interface ChatInputPreviewListProps {
   items?: ChatInputPreviewItem[];
   onTitleChange?: (id: string, value: string) => void;
   onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
   onConfirm?: () => void;
   onCancel?: () => void;
   confirmLabel?: string;
@@ -33,9 +34,10 @@ export default function ChatInputPreviewList({
   items = [],
   onTitleChange,
   onToggleSelect,
+  onToggleSelectAll,
   onConfirm,
   onCancel,
-  confirmLabel = "Save",
+  confirmLabel,
   cancelLabel = "Cancel",
   statusText,
   isLoading = false,
@@ -43,9 +45,13 @@ export default function ChatInputPreviewList({
   className,
 }: ChatInputPreviewListProps) {
   const isActionDisabled = isDisabled || isLoading;
-  const resolvedConfirmLabel = isLoading ? "Saving..." : confirmLabel;
   const selectedCount = items.filter((item) => item.isSelected).length;
-  const resolvedStatusText = statusText ?? `Select tasks to save (${selectedCount}/${items.length})`;
+  const allSelected = items.length > 0 && selectedCount === items.length;
+  const isConfirmDisabled = isActionDisabled || selectedCount === 0;
+  const resolvedConfirmLabel = isLoading
+    ? "Saving..."
+    : confirmLabel ?? `Save selected (${selectedCount})`;
+  const resolvedStatusText = statusText ?? `Selected ${selectedCount} of ${items.length}`;
   const containerClassName = "grid gap-4 sm:grid-cols-2 lg:grid-cols-3";
   const [editingId, setEditingId] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -91,6 +97,21 @@ export default function ChatInputPreviewList({
         <div className="flex flex-col gap-1">
           <h3 className="text-sm font-medium uppercase tracking-widest text-foreground">Preview</h3>
           <p className="text-xs text-muted-foreground/90">Choose what to save.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge className="rounded-full border-border bg-muted px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            {selectedCount} selected
+          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onToggleSelectAll}
+            disabled={isActionDisabled || items.length === 0}
+            className="h-7 rounded-lg px-3 text-[11px] font-semibold uppercase tracking-[0.18em]"
+          >
+            {allSelected ? "Deselect all" : "Select all"}
+          </Button>
         </div>
       </div>
       <div className={cn("mt-3", containerClassName)}>
@@ -189,11 +210,14 @@ export default function ChatInputPreviewList({
             type="button"
             size="sm"
             onClick={onConfirm}
-            disabled={isActionDisabled}
+            disabled={isConfirmDisabled}
             aria-busy={isLoading}
             className={cn(
               "h-7 rounded-lg px-4 text-[11px] font-semibold uppercase tracking-[0.2em]",
-              isActionDisabled && "cursor-not-allowed opacity-70"
+              selectedCount > 0 && !isActionDisabled
+                ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white hover:from-sky-600 hover:via-cyan-600 hover:to-emerald-600"
+                : "bg-muted text-muted-foreground",
+              isConfirmDisabled && "cursor-not-allowed opacity-70"
             )}
           >
             {resolvedConfirmLabel}
