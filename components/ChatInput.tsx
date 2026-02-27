@@ -1,7 +1,7 @@
 "use client";
 
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { Check, Loader2, Send } from "lucide-react";
 import ChatInputPreviewList, { ChatInputPreviewItem } from "@/components/ChatInputPreviewList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ interface ChatInputProps {
   previewStatusText?: string;
   isPreviewLoading?: boolean;
   isSubmitDisabled?: boolean;
+  isSubmitting?: boolean;
+  showSubmitSuccess?: boolean;
   showAiStatusBadge?: boolean;
   aiStatusLabel?: string;
   commandItems?: CommandItem[];
@@ -50,6 +52,8 @@ export default function ChatInput({
   previewStatusText,
   isPreviewLoading = false,
   isSubmitDisabled = false,
+  isSubmitting = false,
+  showSubmitSuccess = false,
   showAiStatusBadge = false,
   aiStatusLabel = "No API key",
   commandItems = [],
@@ -151,6 +155,14 @@ export default function ChatInput({
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [value, textareaRef]);
 
+  const submitIcon = isSubmitting ? (
+    <Loader2 className="h-4 w-4 animate-spin" />
+  ) : showSubmitSuccess ? (
+    <Check className="h-4 w-4" />
+  ) : (
+    <Send className="h-4 w-4" />
+  );
+
   return (
     <div className={cn("bg-transparent", className)}>
       <div className="mx-auto w-full max-w-6xl px-6">
@@ -237,7 +249,7 @@ export default function ChatInput({
                         : "bg-muted text-muted-foreground"
                     )}
                   >
-                    <Send className="h-4 w-4" />
+                    {submitIcon}
                   </Button>
                 </div>
               ) : (
@@ -253,7 +265,7 @@ export default function ChatInput({
                       : "bg-muted text-muted-foreground"
                   )}
                 >
-                  <Send className="h-4 w-4" />
+                  {submitIcon}
                 </Button>
               )}
             </div>

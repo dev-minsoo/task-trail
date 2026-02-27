@@ -124,10 +124,22 @@ function HomeContent() {
   const [isRangeOpen, setIsRangeOpen] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultDateRange());
   const [draftRange, setDraftRange] = useState<DateRange>(() => getDefaultDateRange());
+  const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
+  const submitFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusInput = useCallback(() => {
     setTimeout(() => {
       inputRef.current?.focus();
     }, 0);
+  }, []);
+  const markSubmitFeedback = useCallback(() => {
+    setShowSubmitSuccess(true);
+    if (submitFeedbackTimerRef.current) {
+      clearTimeout(submitFeedbackTimerRef.current);
+    }
+    submitFeedbackTimerRef.current = setTimeout(() => {
+      setShowSubmitSuccess(false);
+      submitFeedbackTimerRef.current = null;
+    }, 900);
   }, []);
 
   const commandItems = useMemo(
@@ -189,6 +201,14 @@ function HomeContent() {
     }
     focusInput();
   }, [focusInput, isLoading]);
+
+  useEffect(() => {
+    return () => {
+      if (submitFeedbackTimerRef.current) {
+        clearTimeout(submitFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   const statusByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -294,6 +314,7 @@ function HomeContent() {
         await addTask({ title, statusId: inboxStatusId, date: "" });
         setNewTaskTitle("");
         setAiStatusLabel(null);
+        markSubmitFeedback();
         shouldRefocus = true;
       } finally {
         setIsParsing(false);
@@ -347,6 +368,7 @@ function HomeContent() {
       setPreviewItems(items);
       setNewTaskTitle("");
       setAiStatusLabel(data.mode === "fallback" ? data.message ?? "AI unavailable" : null);
+      markSubmitFeedback();
     } catch {
       setAiStatusLabel("AI unavailable");
     } finally {
@@ -627,6 +649,8 @@ function HomeContent() {
           onPreviewConfirm={() => void handlePreviewConfirm()}
           isPreviewLoading={isSavingPreview}
           isSubmitDisabled={isParsing || isSavingPreview || isLoading}
+          isSubmitting={isParsing}
+          showSubmitSuccess={showSubmitSuccess}
           showAiStatusBadge={Boolean(aiStatusLabel)}
           aiStatusLabel={aiStatusLabel ?? undefined}
           commandItems={commandItems}
