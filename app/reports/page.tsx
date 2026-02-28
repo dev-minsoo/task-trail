@@ -10,8 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useTaskTrail } from "@/components/TaskTrailContext";
-import { fetchArchivedTasks } from "@/lib/supabase/tasks";
-import type { Task } from "@/lib/types";
+import { fetchArchivedTaskMetricsInRange, type TaskMetricRow } from "@/lib/supabase/tasks";
 
 type DailyPoint = {
   key: string;
@@ -38,8 +37,20 @@ function toDateKey(value: string | null) {
   return formatDateKey(date);
 }
 
+function toRangeBoundaryIso(rangeStart: Date, rangeEnd: Date) {
+  const start = new Date(rangeStart);
+  start.setHours(0, 0, 0, 0);
+  const endExclusive = new Date(rangeEnd);
+  endExclusive.setHours(0, 0, 0, 0);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  return {
+    startInclusiveIso: start.toISOString(),
+    endExclusiveIso: endExclusive.toISOString(),
+  };
+}
+
 function ReportsContent() {
-  const { tasks, statuses } = useTaskTrail();
+  const { tasks, statuses, isBootstrapping } = useTaskTrail();
   const [activeView, setActiveView] = useState<ViewMode>("list");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") {
@@ -48,34 +59,9 @@ function ReportsContent() {
     return localStorage.getItem("theme") === "dark" ? "dark" : "light";
   });
   const [rangeDays, setRangeDays] = useState<7 | 30>(7);
-  const [archivedTasks, setArchivedTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [archivedMetricRows, setArchivedMetricRows] = useState<TaskMetricRow[]>([]);
+  const [isMetricsLoading, setIsMetricsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-    const loadArchived = async () => {
-      setErrorMessage(null);
-      try {
-        const data = await fetchArchivedTasks();
-        if (isMounted) {
-          setArchivedTasks(data);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setErrorMessage(error instanceof Error ? error.message : "Failed to load reports");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-    void loadArchived();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   const applyTheme = (mode: ThemeMode) => {
     const root = document.documentElement;
@@ -90,8 +76,6 @@ function ReportsContent() {
   useEffect(() => {
     applyTheme(themeMode);
   }, [themeMode]);
-
-  const allTasks = useMemo(() => [...tasks, ...archivedTasks], [archivedTasks, tasks]);
   const statusById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses]);
 
   const dateRange = useMemo(() => {
@@ -102,11 +86,54 @@ function ReportsContent() {
     return { start, end };
   }, [rangeDays]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const boundary = toRangeBoundaryIso(dateRange.start, dateRange.end);
+    setIsMetricsLoading(true);
+    setErrorMessage(null);
+
+    const load = async () => {
+      try {
+        const rows = await fetchArchivedTaskMetricsInRange(boundary);
+        if (isMounted) {
+          setArchivedMetricRows(rows);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(error instanceof Error ? error.message : "Failed to load reports");
+          setArchivedMetricRows([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsMetricsLoading(false);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      isMounted = false;
+    };
+  }, [dateRange.end, dateRange.start]);
+
+  const isLoading = isBootstrapping || isMetricsLoading;
+
   const dailySeries = useMemo<DailyPoint[]>(() => {
     const createdCounts = new Map<string, number>();
     const completedCounts = new Map<string, number>();
 
-    allTasks.forEach((task) => {
+    const metricRows: Array<Pick<TaskMetricRow, "createdAt" | "completedAt">> = [
+      ...tasks.map((task) => ({
+        createdAt: task.createdAt,
+        completedAt: task.completedAt,
+      })),
+      ...archivedMetricRows.map((task) => ({
+        createdAt: task.createdAt,
+        completedAt: task.completedAt,
+      })),
+    ];
+
+    metricRows.forEach((task) => {
       const createdKey = toDateKey(task.createdAt);
       if (createdKey) {
         createdCounts.set(createdKey, (createdCounts.get(createdKey) ?? 0) + 1);
@@ -130,7 +157,7 @@ function ReportsContent() {
       });
     }
     return points;
-  }, [allTasks, dateRange.start, rangeDays]);
+  }, [archivedMetricRows, dateRange.start, rangeDays, tasks]);
 
   const createdInRange = useMemo(
     () => dailySeries.reduce((sum, point) => sum + point.created, 0),

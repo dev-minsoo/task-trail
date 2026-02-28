@@ -11,7 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useTaskTrail } from "@/components/TaskTrailContext";
-import { fetchArchivedTaskPage, updateTask, type ArchivedTaskQuery } from "@/lib/supabase/tasks";
+import {
+  fetchArchivedTaskPage,
+  restoreArchivedTaskToInbox,
+  updateTask,
+  type ArchivedTaskQuery,
+} from "@/lib/supabase/tasks";
 import type { Task } from "@/lib/types";
 
 const PAGE_SIZE = 30;
@@ -42,11 +47,15 @@ function ArchivedContent() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [restoringTaskId, setRestoringTaskId] = useState<string | null>(null);
+  const [restoringTaskIds, setRestoringTaskIds] = useState<Set<string>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
   const statusById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses]);
+  const inboxStatusId = useMemo(
+    () => statuses.find((status) => status.name.toLowerCase() === "inbox")?.id ?? null,
+    [statuses]
+  );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -142,18 +151,27 @@ function ArchivedContent() {
 
   const handleRestore = useCallback(
     async (taskId: string) => {
-      setRestoringTaskId(taskId);
+      setRestoringTaskIds((prev) => new Set(prev).add(taskId));
       setErrorMessage(null);
       try {
-        await updateTask(taskId, { isArchived: false, archivedAt: null });
-        void loadPage(0, false);
+        if (inboxStatusId) {
+          await restoreArchivedTaskToInbox(taskId, inboxStatusId);
+        } else {
+          await updateTask(taskId, { isArchived: false, archivedAt: null });
+        }
+        setArchivedTasks((prev) => prev.filter((task) => task.id !== taskId));
+        setTotalCount((prev) => Math.max(0, prev - 1));
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Failed to restore task");
       } finally {
-        setRestoringTaskId(null);
+        setRestoringTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
       }
     },
-    [loadPage]
+    [inboxStatusId]
   );
 
   const handleLoadMore = () => {
@@ -187,7 +205,7 @@ function ArchivedContent() {
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-8 pb-20 pt-6 md:px-12">
               <PageHeader
                 title="Archived"
-                description="Done tasks are automatically archived after 14 days. Search, filter, and restore as needed."
+                description="Done tasks are automatically archived after 14 days. Search, filter, and restore them back to Inbox."
               />
 
               <Card className="rounded-2xl border border-border bg-card/90 p-4">
@@ -297,11 +315,11 @@ function ArchivedContent() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => void handleRestore(task.id)}
-                                disabled={restoringTaskId === task.id}
+                                disabled={restoringTaskIds.has(task.id)}
                                 className="h-8 gap-1 text-xs"
                               >
                                 <RotateCcw className="h-3.5 w-3.5" />
-                                {restoringTaskId === task.id ? "Restoring..." : "Restore"}
+                                {restoringTaskIds.has(task.id) ? "Restoring..." : "Restore to Inbox"}
                               </Button>
                             </Card>
                           );

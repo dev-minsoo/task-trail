@@ -32,6 +32,14 @@ export type ArchivedTaskPage = {
   hasMore: boolean;
 };
 
+export type TaskMetricRow = {
+  id: string;
+  createdAt: string;
+  completedAt: string | null;
+  statusId: string;
+  isArchived: boolean;
+};
+
 function mapTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -45,6 +53,22 @@ function mapTask(row: TaskRow): Task {
     archivedAt: row.archived_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapTaskMetricRow(row: {
+  id: string;
+  created_at: string;
+  completed_at: string | null;
+  status_id: string;
+  is_archived: boolean;
+}): TaskMetricRow {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    completedAt: row.completed_at,
+    statusId: row.status_id,
+    isArchived: row.is_archived,
   };
 }
 
@@ -312,6 +336,32 @@ export async function fetchArchivedTasks(): Promise<Task[]> {
 
 export const listArchivedTasks = fetchArchivedTasks;
 
+export async function restoreArchivedTaskToInbox(taskId: string, inboxStatusId: string): Promise<Task> {
+  const client = getSupabaseClient();
+  const { data: orderRows, error: orderError } = await client
+    .from(TABLE_NAME)
+    .select("order")
+    .eq("is_archived", false)
+    .eq("status_id", inboxStatusId)
+    .order("order", { ascending: false })
+    .limit(1);
+
+  if (orderError) {
+    throw orderError;
+  }
+
+  const nextOrder = (orderRows?.[0]?.order ?? 0) + 1;
+  return updateTask(taskId, {
+    isArchived: false,
+    archivedAt: null,
+    statusId: inboxStatusId,
+    order: nextOrder,
+    startedAt: null,
+    completedAt: null,
+    date: "",
+  });
+}
+
 export async function fetchArchivedTaskPage(query: ArchivedTaskQuery = {}): Promise<ArchivedTaskPage> {
   const page = Math.max(0, query.page ?? 0);
   const pageSize = Math.min(Math.max(1, query.pageSize ?? 30), 100);
@@ -357,4 +407,43 @@ export async function fetchArchivedTaskPage(query: ArchivedTaskQuery = {}): Prom
     total,
     hasMore: from + items.length < total,
   };
+}
+
+export async function fetchArchivedTaskMetricsInRange(input: {
+  startInclusiveIso: string;
+  endExclusiveIso: string;
+}): Promise<TaskMetricRow[]> {
+  const client = getSupabaseClient();
+  const { startInclusiveIso, endExclusiveIso } = input;
+
+  const [createdResult, completedResult] = await Promise.all([
+    client
+      .from(TABLE_NAME)
+      .select("id, created_at, completed_at, status_id, is_archived")
+      .eq("is_archived", true)
+      .gte("created_at", startInclusiveIso)
+      .lt("created_at", endExclusiveIso),
+    client
+      .from(TABLE_NAME)
+      .select("id, created_at, completed_at, status_id, is_archived")
+      .eq("is_archived", true)
+      .not("completed_at", "is", null)
+      .gte("completed_at", startInclusiveIso)
+      .lt("completed_at", endExclusiveIso),
+  ]);
+
+  if (createdResult.error) {
+    throw createdResult.error;
+  }
+  if (completedResult.error) {
+    throw completedResult.error;
+  }
+
+  const rows = [...(createdResult.data ?? []), ...(completedResult.data ?? [])];
+  const deduped = new Map<string, TaskMetricRow>();
+  rows.forEach((row) => {
+    const mapped = mapTaskMetricRow(row);
+    deduped.set(mapped.id, mapped);
+  });
+  return Array.from(deduped.values());
 }
