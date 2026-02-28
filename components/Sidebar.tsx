@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Archive, BarChart3, ChevronLeft, ChevronRight, LayoutList, Sparkles } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ const navItems = [
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const pathname = usePathname();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -61,6 +63,7 @@ export default function Sidebar() {
         <nav className={`flex-1 space-y-2 overflow-visible ${isCollapsed ? "px-2 py-3" : "px-3 py-4"}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
+            const isActive = pathname === item.href;
             return (
               <Link
                 key={item.id}
@@ -68,10 +71,11 @@ export default function Sidebar() {
                 className={cn(
                   buttonVariants({ variant: "ghost" }),
                   "group relative h-11 w-full text-muted-foreground hover:bg-muted hover:text-foreground",
+                  isActive && "bg-muted text-foreground",
                   isCollapsed ? "justify-center px-0" : "justify-start gap-3"
                 )}
               >
-                <Icon className="h-4 w-4 text-muted-foreground" />
+                <Icon className={cn("h-4 w-4 text-muted-foreground", isActive && "text-foreground")} />
                 <span
                   className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-opacity duration-150 ${
                     isCollapsed ? "w-0 opacity-0 pointer-events-none" : "w-auto opacity-100"
