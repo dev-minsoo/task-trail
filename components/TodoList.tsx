@@ -9,11 +9,21 @@ interface TodoListProps {
   tasks: Task[];
   statusById: Map<string, Status>;
   getNextStatus: (statusId: string) => { id: string; label: string } | null;
-  onStatusChange: (taskId: string, statusId: string) => void;
-  onDelete: (taskId: string) => void;
+  updatingTaskIds?: Set<string>;
+  deletingTaskIds?: Set<string>;
+  onStatusChange: (taskId: string, statusId: string) => Promise<void> | void;
+  onDelete: (taskId: string) => Promise<void> | void;
 }
 
-export default function TodoList({ tasks, statusById, getNextStatus, onStatusChange, onDelete }: TodoListProps) {
+export default function TodoList({
+  tasks,
+  statusById,
+  getNextStatus,
+  updatingTaskIds = new Set<string>(),
+  deletingTaskIds = new Set<string>(),
+  onStatusChange,
+  onDelete,
+}: TodoListProps) {
   if (tasks.length === 0) {
     return (
       <Card className="flex flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border bg-card/80 px-6 py-16 text-center">
@@ -41,6 +51,8 @@ export default function TodoList({ tasks, statusById, getNextStatus, onStatusCha
             task={task}
             statusLabel={statusLabel}
             nextStatus={nextStatus ?? undefined}
+            isStatusUpdating={updatingTaskIds.has(task.id)}
+            isDeleting={deletingTaskIds.has(task.id)}
             onStatusChange={onStatusChange}
             onDelete={onDelete}
           />

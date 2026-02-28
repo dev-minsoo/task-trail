@@ -133,7 +133,10 @@ function HomeContent() {
   const [previewItems, setPreviewItems] = useState<ParsedTaskItem[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [submitActivityLabel, setSubmitActivityLabel] = useState<string | null>(null);
   const [isSavingPreview, setIsSavingPreview] = useState(false);
+  const [updatingTaskIds, setUpdatingTaskIds] = useState<Set<string>>(new Set());
+  const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(new Set());
   const [aiStatusLabel, setAiStatusLabel] = useState<string | null>(null);
   const [isAiAvailable, setIsAiAvailable] = useState(false);
   const [isRangeOpen, setIsRangeOpen] = useState(false);
@@ -352,6 +355,7 @@ function HomeContent() {
         return;
       }
       setIsParsing(true);
+      setSubmitActivityLabel("Saving task...");
       let shouldRefocus = false;
       try {
         await addTask({ title, statusId: inboxStatusId, date: "" });
@@ -361,6 +365,7 @@ function HomeContent() {
         shouldRefocus = true;
       } finally {
         setIsParsing(false);
+        setSubmitActivityLabel(null);
         if (shouldRefocus) {
           focusInput();
         }
@@ -374,6 +379,7 @@ function HomeContent() {
     }
 
     setIsParsing(true);
+    setSubmitActivityLabel("Summarizing...");
     setAiStatusLabel(null);
 
     try {
@@ -416,6 +422,7 @@ function HomeContent() {
       setAiStatusLabel("AI unavailable");
     } finally {
       setIsParsing(false);
+      setSubmitActivityLabel(null);
     }
   };
 
@@ -439,6 +446,44 @@ function HomeContent() {
       return prev.map((item) => ({ ...item, isSelected: shouldSelectAll }));
     });
   }, []);
+
+  const handleTaskStatusChange = useCallback(
+    async (taskId: string, statusId: string) => {
+      if (updatingTaskIds.has(taskId)) {
+        return;
+      }
+      setUpdatingTaskIds((prev) => new Set(prev).add(taskId));
+      try {
+        await changeTaskStatus(taskId, statusId);
+      } finally {
+        setUpdatingTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
+      }
+    },
+    [changeTaskStatus, updatingTaskIds]
+  );
+
+  const handleDeleteTask = useCallback(
+    async (taskId: string) => {
+      if (deletingTaskIds.has(taskId)) {
+        return;
+      }
+      setDeletingTaskIds((prev) => new Set(prev).add(taskId));
+      try {
+        await deleteTaskById(taskId);
+      } finally {
+        setDeletingTaskIds((prev) => {
+          const next = new Set(prev);
+          next.delete(taskId);
+          return next;
+        });
+      }
+    },
+    [deleteTaskById, deletingTaskIds]
+  );
 
   const handlePreviewCancel = useCallback(() => {
     setPreviewItems([]);
@@ -694,8 +739,10 @@ function HomeContent() {
                   tasks={activeTasks}
                   statusById={statusById}
                   getNextStatus={getNextStatus}
-                  onStatusChange={changeTaskStatus}
-                  onDelete={deleteTaskById}
+                  updatingTaskIds={updatingTaskIds}
+                  deletingTaskIds={deletingTaskIds}
+                  onStatusChange={handleTaskStatusChange}
+                  onDelete={handleDeleteTask}
                 />
               ) : (
                 <KanbanBoard statuses={statuses} tasks={rangeFilteredTasks} onTaskDragEnd={handleTaskDragEnd} />
@@ -722,6 +769,7 @@ function HomeContent() {
           isSubmitDisabled={isParsing || isSavingPreview || isLoading}
           isSubmitting={isParsing}
           showSubmitSuccess={showSubmitSuccess}
+          submitActivityLabel={submitActivityLabel}
           showAiStatusBadge={Boolean(aiStatusLabel)}
           aiStatusLabel={aiStatusLabel ?? undefined}
           commandItems={commandItems}

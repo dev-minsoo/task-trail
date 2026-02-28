@@ -24,6 +24,7 @@ interface ChatInputProps {
   isSubmitDisabled?: boolean;
   isSubmitting?: boolean;
   showSubmitSuccess?: boolean;
+  submitActivityLabel?: string | null;
   showAiStatusBadge?: boolean;
   aiStatusLabel?: string;
   commandItems?: CommandItem[];
@@ -56,6 +57,7 @@ export default function ChatInput({
   isSubmitDisabled = false,
   isSubmitting = false,
   showSubmitSuccess = false,
+  submitActivityLabel = null,
   showAiStatusBadge = false,
   aiStatusLabel = "No API key",
   commandItems = [],
@@ -287,6 +289,12 @@ export default function ChatInput({
         </div>
 
         <p className="mt-2 text-center text-xs text-muted-foreground">
+          {submitActivityLabel ? (
+            <span className="mr-2 inline-flex items-center gap-1 text-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {submitActivityLabel}
+            </span>
+          ) : null}
           Press <kbd className="rounded bg-muted px-1.5 py-0.5 text-foreground">Enter</kbd> to preview •
           <kbd className="ml-1 rounded bg-muted px-1.5 py-0.5 text-foreground">Shift + Enter</kbd> for a new line
         </p>

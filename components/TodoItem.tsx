@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2, MoveRight, CalendarDays } from "lucide-react";
+import { Trash2, MoveRight, CalendarDays, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,8 +14,10 @@ interface TodoItemProps {
     id: string;
     label: string;
   };
-  onStatusChange: (taskId: string, statusId: string) => void;
-  onDelete: (taskId: string) => void;
+  isStatusUpdating?: boolean;
+  isDeleting?: boolean;
+  onStatusChange: (taskId: string, statusId: string) => Promise<void> | void;
+  onDelete: (taskId: string) => Promise<void> | void;
 }
 
 const statusStyles: Record<
@@ -39,9 +41,18 @@ const statusStyles: Record<
   },
 };
 
-export default function TodoItem({ task, statusLabel, nextStatus, onStatusChange, onDelete }: TodoItemProps) {
+export default function TodoItem({
+  task,
+  statusLabel,
+  nextStatus,
+  isStatusUpdating = false,
+  isDeleting = false,
+  onStatusChange,
+  onDelete,
+}: TodoItemProps) {
   const style = statusStyles[statusLabel] ?? statusStyles.Inbox;
   const createdAt = new Date(task.createdAt);
+  const isActionLoading = isStatusUpdating || isDeleting;
 
   return (
     <Card
@@ -80,17 +91,32 @@ export default function TodoItem({ task, statusLabel, nextStatus, onStatusChange
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2 opacity-0 transition group-hover:opacity-100">
+        <div
+          className={cn(
+            "flex items-center gap-2 transition",
+            isActionLoading ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
+        >
           {nextStatus && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => onStatusChange(task.id, nextStatus.id)}
+              disabled={isActionLoading}
               className="h-8 px-3 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              <MoveRight className="mr-1 h-3 w-3" />
-              {nextStatus.label}
+              {isStatusUpdating ? (
+                <>
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <MoveRight className="mr-1 h-3 w-3" />
+                  {nextStatus.label}
+                </>
+              )}
             </Button>
           )}
           <Button
@@ -98,9 +124,10 @@ export default function TodoItem({ task, statusLabel, nextStatus, onStatusChange
             variant="ghost"
             size="icon"
             onClick={() => onDelete(task.id)}
+            disabled={isActionLoading}
             className="h-8 w-8 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500"
           >
-            <Trash2 className="h-4 w-4" />
+            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
           </Button>
         </div>
       </div>
