@@ -57,6 +57,26 @@ const isTaskInRange = (task: Task, statusKey: string, rangeStart: Date | null, r
 const getTaskSortTime = (task: Task, statusKey: string) =>
   new Date(getTaskTimestamp(task, statusKey)).getTime();
 
+const sortTasksByStatus = (items: Task[], statusKey: string) => {
+  if (statusKey === "done") {
+    return [...items].sort((a, b) => {
+      const bTime = getTaskSortTime(b, "done");
+      const aTime = getTaskSortTime(a, "done");
+      if (bTime === aTime) {
+        return b.order - a.order;
+      }
+      return bTime - aTime;
+    });
+  }
+
+  return [...items].sort((a, b) => {
+    if (a.order === b.order) {
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    }
+    return a.order - b.order;
+  });
+};
+
 const LIST_TABS = [
   { key: "inbox", label: "Inbox" },
   { key: "in progress", label: "In Progress" },
@@ -576,11 +596,7 @@ function HomeContent() {
     }
 
     const filtered = rangeFilteredTasks.filter((task) => task.statusId === statusId);
-    return filtered.sort((a, b) => {
-      const aTime = getTaskSortTime(a, activeListStatus);
-      const bTime = getTaskSortTime(b, activeListStatus);
-      return bTime - aTime;
-    });
+    return sortTasksByStatus(filtered, activeListStatus);
   }, [activeListStatus, activeView, rangeFilteredTasks, statusByName]);
 
   const rangeLabel =

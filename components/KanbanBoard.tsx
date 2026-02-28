@@ -87,8 +87,22 @@ function StatusColumn({ status, tasks }: { status: Status; tasks: Task[] }) {
     data: { containerId: status.id, type: "column" },
   });
 
-  const tone = columnStyles[status.name.toLowerCase()] ?? columnStyles.inbox;
-  const orderedTasks = [...tasks].sort((a, b) => a.order - b.order);
+  const statusKey = status.name.toLowerCase();
+  const tone = columnStyles[statusKey] ?? columnStyles.inbox;
+  const orderedTasks = [...tasks].sort((a, b) => {
+    if (statusKey === "done") {
+      const bTime = new Date(b.completedAt ?? b.updatedAt).getTime();
+      const aTime = new Date(a.completedAt ?? a.updatedAt).getTime();
+      if (bTime === aTime) {
+        return b.order - a.order;
+      }
+      return bTime - aTime;
+    }
+    if (a.order === b.order) {
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    }
+    return a.order - b.order;
+  });
 
   return (
     <Card
