@@ -163,6 +163,7 @@ function HomeContent() {
   const [dateRange, setDateRange] = useState<DateRange>(() => getDefaultDateRange());
   const [draftRange, setDraftRange] = useState<DateRange>(() => getDefaultDateRange());
   const rangePanelRef = useRef<HTMLDivElement | null>(null);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
   const submitFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const focusInput = useCallback(() => {
@@ -180,6 +181,22 @@ function HomeContent() {
       submitFeedbackTimerRef.current = null;
     }, 900);
   }, []);
+
+  const revealNewInboxTask = useCallback(() => {
+    if (activeView !== "list" || activeListStatus !== "inbox") {
+      return;
+    }
+    setTimeout(() => {
+      const container = contentScrollRef.current;
+      if (!container) {
+        return;
+      }
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 0);
+  }, [activeListStatus, activeView]);
 
   const commandItems = useMemo(
     () => [
@@ -382,6 +399,7 @@ function HomeContent() {
         setNewTaskTitle("");
         setAiStatusLabel(null);
         markSubmitFeedback();
+        revealNewInboxTask();
         shouldRefocus = true;
       } finally {
         setIsParsing(false);
@@ -532,6 +550,7 @@ function HomeContent() {
       );
       setPreviewItems([]);
       setAiStatusLabel(null);
+      revealNewInboxTask();
       shouldRefocus = true;
     } finally {
       setIsSavingPreview(false);
@@ -539,7 +558,7 @@ function HomeContent() {
         focusInput();
       }
     }
-  }, [addTasks, focusInput, inboxStatusId, previewItems]);
+  }, [addTasks, focusInput, inboxStatusId, previewItems, revealNewInboxTask]);
 
   useEffect(() => {
     if (!isPreviewing) {
@@ -640,7 +659,10 @@ function HomeContent() {
               onToggleThemeAction={() => applyTheme(themeMode === "dark" ? "light" : "dark")}
             />
           </div>
-          <div className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]">
+          <div
+            ref={contentScrollRef}
+            className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]"
+          >
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-8 pb-20 pt-6 md:px-12">
               <TaskHeader
                 tabs={listTabs}
