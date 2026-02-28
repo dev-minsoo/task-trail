@@ -3,7 +3,7 @@ import type { Task, TaskUpdate } from "../types";
 
 const TABLE_NAME = "tasks" as const;
 
-function mapTask(row: {
+type TaskRow = {
   id: string;
   title: string;
   status_id: string;
@@ -15,7 +15,24 @@ function mapTask(row: {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
-}): Task {
+};
+
+export type ArchivedTaskQuery = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  statusId?: string;
+  archivedFrom?: string;
+  archivedTo?: string;
+};
+
+export type ArchivedTaskPage = {
+  items: Task[];
+  total: number;
+  hasMore: boolean;
+};
+
+function mapTask(row: TaskRow): Task {
   return {
     id: row.id,
     title: row.title,
@@ -29,6 +46,22 @@ function mapTask(row: {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function toStartOfDayIso(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+  return new Date(year, month - 1, day, 0, 0, 0, 0).toISOString();
+}
+
+function toNextDayStartIso(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) {
+    return null;
+  }
+  return new Date(year, month - 1, day + 1, 0, 0, 0, 0).toISOString();
 }
 
 export async function listTasksByDate(date: string): Promise<Task[]> {
@@ -264,32 +297,64 @@ export async function deleteTask(id: string): Promise<void> {
 }
 
 export async function fetchArchivedTasks(): Promise<Task[]> {
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from(TABLE_NAME)
-    .select("*")
-    .eq("is_archived", true)
-    .order("archived_at", { ascending: false });
+  const allItems: Task[] = [];
+  let page = 0;
+  while (true) {
+    const result = await fetchArchivedTaskPage({ page, pageSize: 100 });
+    allItems.push(...result.items);
+    if (!result.hasMore) {
+      break;
+    }
+    page += 1;
+  }
+  return allItems;
+}
 
+export const listArchivedTasks = fetchArchivedTasks;
+
+export async function fetchArchivedTaskPage(query: ArchivedTaskQuery = {}): Promise<ArchivedTaskPage> {
+  const page = Math.max(0, query.page ?? 0);
+  const pageSize = Math.min(Math.max(1, query.pageSize ?? 30), 100);
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const client = getSupabaseClient();
+  let request = client
+    .from(TABLE_NAME)
+    .select("*", { count: "exact" })
+    .eq("is_archived", true)
+    .order("archived_at", { ascending: false, nullsFirst: false })
+    .range(from, to);
+
+  const search = query.search?.trim();
+  if (search) {
+    request = request.ilike("title", `%${search}%`);
+  }
+
+  if (query.statusId) {
+    request = request.eq("status_id", query.statusId);
+  }
+
+  const archivedFromIso = query.archivedFrom ? toStartOfDayIso(query.archivedFrom) : null;
+  if (archivedFromIso) {
+    request = request.gte("archived_at", archivedFromIso);
+  }
+
+  const archivedToExclusiveIso = query.archivedTo ? toNextDayStartIso(query.archivedTo) : null;
+  if (archivedToExclusiveIso) {
+    request = request.lt("archived_at", archivedToExclusiveIso);
+  }
+
+  const { data, error, count } = await request;
   if (error) {
     throw error;
   }
 
-  return (data ?? []).map((row) =>
-    mapTask(row as {
-      id: string;
-      title: string;
-      status_id: string;
-      date: string;
-      order: number;
-      started_at: string | null;
-      completed_at: string | null;
-      is_archived: boolean;
-      archived_at: string | null;
-      created_at: string;
-      updated_at: string;
-    })
-  );
+  const total = count ?? 0;
+  const items = (data ?? []).map((row) => mapTask(row as TaskRow));
+  return {
+    items,
+    total,
+    hasMore: from + items.length < total,
+  };
 }
-
-export const listArchivedTasks = fetchArchivedTasks;
