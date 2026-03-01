@@ -213,25 +213,25 @@ function ArchivedContent() {
               />
 
               <Card className="rounded-2xl border border-border bg-card/90 p-4">
-                <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_1fr_auto]">
-                  <label className="relative block">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <label className="relative block md:col-span-2 xl:col-span-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={searchInput}
                       onChange={(event) => setSearchInput(event.target.value)}
                       placeholder="Search archived task title"
-                      className="pl-9"
+                      className="h-10 pl-9"
                     />
                   </label>
 
-                  <label className="flex flex-col gap-1">
+                  <label className="min-w-0 flex flex-col gap-1">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                       Status
                     </span>
                     <select
                       value={statusFilter}
                       onChange={(event) => setStatusFilter(event.target.value)}
-                      className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                      className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
                     >
                       <option value="all">All statuses</option>
                       {statuses.map((status) => (
@@ -242,22 +242,32 @@ function ArchivedContent() {
                     </select>
                   </label>
 
-                  <label className="flex flex-col gap-1">
+                  <label className="min-w-0 flex flex-col gap-1">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                       Archived from
                     </span>
-                    <Input type="date" value={archivedFrom} onChange={(event) => setArchivedFrom(event.target.value)} />
+                    <Input
+                      type="date"
+                      value={archivedFrom}
+                      onChange={(event) => setArchivedFrom(event.target.value)}
+                      className="h-10"
+                    />
                   </label>
 
-                  <label className="flex flex-col gap-1">
+                  <label className="min-w-0 flex flex-col gap-1">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                       Archived to
                     </span>
-                    <Input type="date" value={archivedTo} onChange={(event) => setArchivedTo(event.target.value)} />
+                    <Input
+                      type="date"
+                      value={archivedTo}
+                      onChange={(event) => setArchivedTo(event.target.value)}
+                      className="h-10"
+                    />
                   </label>
 
-                  <div className="flex items-end">
-                    <Button type="button" variant="ghost" className="h-9 w-full" onClick={clearFilters}>
+                  <div className="flex items-end md:col-span-2 xl:col-span-1">
+                    <Button type="button" variant="ghost" className="h-10 w-full" onClick={clearFilters}>
                       Reset
                     </Button>
                   </div>
