@@ -19,6 +19,11 @@ type DailyPoint = {
   completed: number;
 };
 
+type PeriodSummary = {
+  created: number;
+  completed: number;
+};
+
 function formatDateKey(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -47,6 +52,22 @@ function toRangeBoundaryIso(rangeStart: Date, rangeEnd: Date) {
     startInclusiveIso: start.toISOString(),
     endExclusiveIso: endExclusive.toISOString(),
   };
+}
+
+function sumPeriod(points: DailyPoint[], fromIndex: number, toIndex: number): PeriodSummary {
+  return points.slice(fromIndex, toIndex).reduce(
+    (acc, point) => ({
+      created: acc.created + point.created,
+      completed: acc.completed + point.completed,
+    }),
+    { created: 0, completed: 0 }
+  );
+}
+
+function formatDelta(current: number, previous: number) {
+  const diff = current - previous;
+  const sign = diff > 0 ? "+" : "";
+  return `${sign}${diff}`;
 }
 
 function ReportsContent() {
@@ -79,16 +100,22 @@ function ReportsContent() {
   const statusById = useMemo(() => new Map(statuses.map((status) => [status.id, status])), [statuses]);
 
   const dateRange = useMemo(() => {
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
-    const start = new Date(end);
-    start.setDate(end.getDate() - (rangeDays - 1));
-    return { start, end };
+    const currentEnd = new Date();
+    currentEnd.setHours(0, 0, 0, 0);
+    const currentStart = new Date(currentEnd);
+    currentStart.setDate(currentEnd.getDate() - (rangeDays - 1));
+
+    const previousEnd = new Date(currentStart);
+    previousEnd.setDate(currentStart.getDate() - 1);
+    const previousStart = new Date(previousEnd);
+    previousStart.setDate(previousEnd.getDate() - (rangeDays - 1));
+
+    return { currentStart, currentEnd, previousStart, previousEnd };
   }, [rangeDays]);
 
   useEffect(() => {
     let isMounted = true;
-    const boundary = toRangeBoundaryIso(dateRange.start, dateRange.end);
+    const boundary = toRangeBoundaryIso(dateRange.previousStart, dateRange.currentEnd);
     setIsMetricsLoading(true);
     setErrorMessage(null);
 
@@ -114,7 +141,7 @@ function ReportsContent() {
     return () => {
       isMounted = false;
     };
-  }, [dateRange.end, dateRange.start]);
+  }, [dateRange.currentEnd, dateRange.previousStart]);
 
   const isLoading = isBootstrapping || isMetricsLoading;
 
@@ -145,9 +172,10 @@ function ReportsContent() {
     });
 
     const points: DailyPoint[] = [];
-    for (let i = 0; i < rangeDays; i += 1) {
-      const date = new Date(dateRange.start);
-      date.setDate(dateRange.start.getDate() + i);
+    const totalDays = rangeDays * 2;
+    for (let i = 0; i < totalDays; i += 1) {
+      const date = new Date(dateRange.previousStart);
+      date.setDate(dateRange.previousStart.getDate() + i);
       const key = formatDateKey(date);
       points.push({
         key,
@@ -157,17 +185,22 @@ function ReportsContent() {
       });
     }
     return points;
-  }, [archivedMetricRows, dateRange.start, rangeDays, tasks]);
+  }, [archivedMetricRows, dateRange.previousStart, rangeDays, tasks]);
 
-  const createdInRange = useMemo(
-    () => dailySeries.reduce((sum, point) => sum + point.created, 0),
-    [dailySeries]
+  const previousSummary = useMemo(() => sumPeriod(dailySeries, 0, rangeDays), [dailySeries, rangeDays]);
+  const currentSummary = useMemo(
+    () => sumPeriod(dailySeries, rangeDays, rangeDays * 2),
+    [dailySeries, rangeDays]
   );
-  const completedInRange = useMemo(
-    () => dailySeries.reduce((sum, point) => sum + point.completed, 0),
-    [dailySeries]
-  );
+
+  const createdInRange = currentSummary.created;
+  const completedInRange = currentSummary.completed;
+  const createdDelta = formatDelta(currentSummary.created, previousSummary.created);
+  const completedDelta = formatDelta(currentSummary.completed, previousSummary.completed);
   const completionRate = createdInRange > 0 ? Math.round((completedInRange / createdInRange) * 100) : 0;
+  const previousCompletionRate =
+    previousSummary.created > 0 ? Math.round((previousSummary.completed / previousSummary.created) * 100) : 0;
+  const completionRateDelta = formatDelta(completionRate, previousCompletionRate);
 
   const activeInProgressCount = useMemo(() => {
     const inProgressStatusIds = new Set(
@@ -187,9 +220,11 @@ function ReportsContent() {
     return Array.from(counts.entries()).map(([name, count]) => ({ name, count }));
   }, [statusById, tasks]);
 
+  const currentSeries = useMemo(() => dailySeries.slice(rangeDays), [dailySeries, rangeDays]);
+
   const maxDailyValue = useMemo(() => {
-    return dailySeries.reduce((max, point) => Math.max(max, point.created, point.completed), 0);
-  }, [dailySeries]);
+    return currentSeries.reduce((max, point) => Math.max(max, point.created, point.completed), 0);
+  }, [currentSeries]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
@@ -202,6 +237,7 @@ function ReportsContent() {
               onViewChangeAction={setActiveView}
               themeMode={themeMode}
               onToggleThemeAction={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
+              showViewToggle={false}
             />
           </div>
           <div className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]">
@@ -246,7 +282,9 @@ function ReportsContent() {
                         <ClipboardList className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{createdInRange}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{rangeDays}-day window</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {rangeDays}-day window ({createdDelta} vs previous)
+                      </p>
                     </Card>
 
                     <Card className="rounded-2xl border border-border bg-card/90 p-4">
@@ -255,7 +293,9 @@ function ReportsContent() {
                         <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{completedInRange}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{rangeDays}-day window</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {rangeDays}-day window ({completedDelta} vs previous)
+                      </p>
                     </Card>
 
                     <Card className="rounded-2xl border border-border bg-card/90 p-4">
@@ -264,7 +304,9 @@ function ReportsContent() {
                         <TrendingUp className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{completionRate}%</p>
-                      <p className="mt-1 text-xs text-muted-foreground">completed / created</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        completed / created ({completionRateDelta}pt vs previous)
+                      </p>
                     </Card>
 
                     <Card className="rounded-2xl border border-border bg-card/90 p-4">
@@ -299,7 +341,7 @@ function ReportsContent() {
                       </div>
                     </div>
                     <div className="grid gap-2">
-                      {dailySeries.map((point) => {
+                      {currentSeries.map((point) => {
                         const createdWidth = maxDailyValue > 0 ? Math.round((point.created / maxDailyValue) * 100) : 0;
                         const completedWidth =
                           maxDailyValue > 0 ? Math.round((point.completed / maxDailyValue) * 100) : 0;
@@ -321,6 +363,18 @@ function ReportsContent() {
                         );
                       })}
                     </div>
+                  </Card>
+
+                  <Card className="rounded-3xl border border-border bg-card/90 p-5">
+                    <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                      KPI definition
+                    </h3>
+                    <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+                      <li>`Created`: tasks with `created_at` in selected period.</li>
+                      <li>`Completed`: tasks with `completed_at` in selected period.</li>
+                      <li>`Completion rate`: `Completed / Created` for the same period.</li>
+                      <li>`Active WIP`: current non-archived tasks in `In Progress`.</li>
+                    </ul>
                   </Card>
 
                   <Card className="rounded-3xl border border-border bg-card/90 p-5">

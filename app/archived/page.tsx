@@ -96,6 +96,7 @@ function ArchivedContent() {
         statusId: statusFilter === "all" ? undefined : statusFilter,
         archivedFrom: archivedFrom || undefined,
         archivedTo: archivedTo || undefined,
+        includeCount: !append,
       };
 
       try {
@@ -104,7 +105,9 @@ function ArchivedContent() {
           return;
         }
         setArchivedTasks((prev) => (append ? [...prev, ...result.items] : result.items));
-        setTotalCount(result.total);
+        if (!append) {
+          setTotalCount(result.total);
+        }
         setHasMore(result.hasMore);
         setPage(targetPage);
       } catch (error) {
@@ -199,6 +202,7 @@ function ArchivedContent() {
               onViewChangeAction={setActiveView}
               themeMode={themeMode}
               onToggleThemeAction={() => setThemeMode(themeMode === "dark" ? "light" : "dark")}
+              showViewToggle={false}
             />
           </div>
           <div className="scrollbar-thin relative h-full overflow-y-auto [scrollbar-gutter:stable]">

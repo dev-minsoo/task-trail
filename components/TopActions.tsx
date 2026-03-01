@@ -11,6 +11,7 @@ type TopActionsProps = {
   onViewChangeAction: (view: ViewMode) => void;
   themeMode: ThemeMode;
   onToggleThemeAction: () => void;
+  showViewToggle?: boolean;
 };
 
 export default function TopActions({
@@ -18,41 +19,44 @@ export default function TopActions({
   onViewChangeAction,
   themeMode,
   onToggleThemeAction,
+  showViewToggle = true,
 }: TopActionsProps) {
   return (
     <div className="flex items-center gap-2">
-      <div className="flex items-center gap-2 rounded-full border border-border bg-background/95 p-1 shadow-sm backdrop-blur">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onViewChangeAction("list")}
-          className={`group relative rounded-full hover:bg-transparent ${
-            activeView === "list" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-          }`}
-          aria-label="List view"
-        >
-          <LayoutList className="h-4 w-4" />
-          <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-            List
-          </span>
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onViewChangeAction("kanban")}
-          className={`group relative rounded-full hover:bg-transparent ${
-            activeView === "kanban" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-          }`}
-          aria-label="Kanban view"
-        >
-          <LayoutGrid className="h-4 w-4" />
-          <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-            Kanban
-          </span>
-        </Button>
-      </div>
+      {showViewToggle ? (
+        <div className="flex items-center gap-2 rounded-full border border-border bg-background/95 p-1 shadow-sm backdrop-blur">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onViewChangeAction("list")}
+            className={`group relative rounded-full hover:bg-transparent ${
+              activeView === "list" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+            aria-label="List view"
+          >
+            <LayoutList className="h-4 w-4" />
+            <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              List
+            </span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onViewChangeAction("kanban")}
+            className={`group relative rounded-full hover:bg-transparent ${
+              activeView === "kanban" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+            aria-label="Kanban view"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-foreground px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-background opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+              Kanban
+            </span>
+          </Button>
+        </div>
+      ) : null}
       <div className="flex items-center rounded-full border border-border bg-background/95 p-1 shadow-sm backdrop-blur">
         <Button
           type="button"

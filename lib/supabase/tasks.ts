@@ -24,6 +24,7 @@ export type ArchivedTaskQuery = {
   statusId?: string;
   archivedFrom?: string;
   archivedTo?: string;
+  includeCount?: boolean;
 };
 
 export type ArchivedTaskPage = {
@@ -367,11 +368,12 @@ export async function fetchArchivedTaskPage(query: ArchivedTaskQuery = {}): Prom
   const pageSize = Math.min(Math.max(1, query.pageSize ?? 30), 100);
   const from = page * pageSize;
   const to = from + pageSize - 1;
+  const includeCount = query.includeCount ?? true;
 
   const client = getSupabaseClient();
   let request = client
     .from(TABLE_NAME)
-    .select("*", { count: "exact" })
+    .select("*", includeCount ? { count: "exact" } : undefined)
     .eq("is_archived", true)
     .order("archived_at", { ascending: false, nullsFirst: false })
     .range(from, to);
@@ -400,12 +402,13 @@ export async function fetchArchivedTaskPage(query: ArchivedTaskQuery = {}): Prom
     throw error;
   }
 
-  const total = count ?? 0;
+  const total = includeCount ? count ?? 0 : 0;
   const items = (data ?? []).map((row) => mapTask(row as TaskRow));
+  const hasMore = includeCount ? from + items.length < total : items.length === pageSize;
   return {
     items,
     total,
-    hasMore: from + items.length < total,
+    hasMore,
   };
 }
 
