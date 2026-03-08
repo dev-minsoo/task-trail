@@ -4,9 +4,10 @@ Task Trail is a personal checklist app with date-based task views, a lightweight
 
 ## Features
 
-- Date-based checklist view
+- Inbox / In Progress / Done checklist flow
 - Kanban board with drag-and-drop
-- Custom status columns with reordering
+- Archived task search with restore
+- Throughput reports (7-day / 30-day)
 - AI task suggestion (optional)
 
 ## Tech Stack
@@ -46,7 +47,7 @@ OPENAI_API_KEY=sk-your-openai-key
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-4. Create tables in **SQL Editor**:
+4. Create tables in **SQL Editor** (or apply equivalent migrations):
 
 ```sql
 create table if not exists statuses (
@@ -62,15 +63,37 @@ create table if not exists tasks (
   status_id uuid not null references statuses(id) on delete cascade,
   date text not null,
   "order" integer not null,
+  started_at timestamptz,
+  completed_at timestamptz,
+  is_archived boolean not null default false,
+  archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+create table if not exists task_status_history (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  from_status_id uuid references statuses(id),
+  to_status_id uuid not null references statuses(id),
+  changed_at timestamptz not null default now()
+);
+
 create index if not exists tasks_date_idx on tasks(date);
 create index if not exists tasks_status_idx on tasks(status_id);
+create index if not exists tasks_archived_archived_at_idx on tasks(archived_at desc) where is_archived = true;
+create index if not exists tasks_archived_status_archived_at_idx on tasks(status_id, archived_at desc) where is_archived = true;
+create index if not exists tasks_created_at_idx on tasks(created_at);
+create index if not exists tasks_completed_at_idx on tasks(completed_at) where completed_at is not null;
+create index if not exists task_status_history_task_id_idx on task_status_history(task_id);
+create index if not exists task_status_history_changed_at_idx on task_status_history(changed_at);
 ```
 
-The app auto-seeds default statuses (`To Do`, `In Progress`, `Done`) when the table is empty.
+The app auto-seeds default statuses (`Inbox`, `In Progress`, `Done`) when the table is empty.
+
+5. (Optional) Enable automatic archival of done tasks after 14 days:
+   - run `supabase/migrations/20260125_archive_done_tasks.sql`
+   - requires `pg_cron` support in your Postgres environment
 
 ## AI Suggestions
 
