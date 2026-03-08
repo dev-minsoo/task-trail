@@ -25,6 +25,17 @@ type ParseResult = {
 };
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const MAX_INPUT_CHARS = 4_000;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const MAX_REQUESTS_PER_WINDOW = 12;
+const MAX_TRACKED_CLIENTS = 2_000;
+
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
 
 function normalizeItems(content: string): ParsedItem[] {
   const trimmed = content.trim();
@@ -94,6 +105,68 @@ function fallbackResult(trimmed: string, message: string): ParseResult {
   };
 }
 
+function parseClientId(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const firstIp = forwardedFor.split(",")[0]?.trim();
+    if (firstIp) {
+      return firstIp;
+    }
+  }
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp) {
+    return realIp;
+  }
+  return "unknown";
+}
+
+function isAllowedOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    return originUrl.protocol === requestUrl.protocol && originUrl.host === requestUrl.host;
+  } catch {
+    return false;
+  }
+}
+
+function checkRateLimit(clientId: string) {
+  const now = Date.now();
+
+  if (rateLimitBuckets.size > MAX_TRACKED_CLIENTS) {
+    for (const [key, bucket] of rateLimitBuckets.entries()) {
+      if (bucket.resetAt <= now) {
+        rateLimitBuckets.delete(key);
+      }
+    }
+  }
+
+  const current = rateLimitBuckets.get(clientId);
+  if (!current || current.resetAt <= now) {
+    rateLimitBuckets.set(clientId, {
+      count: 1,
+      resetAt: now + RATE_LIMIT_WINDOW_MS,
+    });
+    return { allowed: true };
+  }
+
+  if (current.count >= MAX_REQUESTS_PER_WINDOW) {
+    return {
+      allowed: false,
+      retryAfterMs: Math.max(0, current.resetAt - now),
+    };
+  }
+
+  current.count += 1;
+  rateLimitBuckets.set(clientId, current);
+  return { allowed: true };
+}
+
 function mapUpstreamErrorToMessage(status: number, errorText: string) {
   const lowerText = errorText.toLowerCase();
   if (status === 429 || lowerText.includes("insufficient_quota")) {
@@ -112,6 +185,10 @@ function mapUpstreamErrorToMessage(status: number, errorText: string) {
 }
 
 export async function POST(request: Request) {
+  if (!isAllowedOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  }
+
   let body: ParseRequest;
   try {
     body = (await request.json()) as ParseRequest;
@@ -124,6 +201,34 @@ export async function POST(request: Request) {
 
   if (!trimmed) {
     return NextResponse.json({ mode: "fallback", todo: [] });
+  }
+
+  if (trimmed.length > MAX_INPUT_CHARS) {
+    return NextResponse.json(
+      {
+        error: "Input too long",
+        message: `Please keep AI input under ${MAX_INPUT_CHARS} characters.`,
+      },
+      { status: 413 }
+    );
+  }
+
+  const clientId = parseClientId(request);
+  const rateLimit = checkRateLimit(clientId);
+  if (!rateLimit.allowed) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((rateLimit.retryAfterMs ?? 0) / 1_000));
+    return NextResponse.json(
+      {
+        error: "Too many requests",
+        message: `AI request limit reached. Try again in ${retryAfterSeconds}s.`,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": `${retryAfterSeconds}`,
+        },
+      }
+    );
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -167,6 +272,7 @@ export async function POST(request: Request) {
               { role: "user", content: trimmed },
             ],
             temperature: 0.2,
+            max_tokens: 300,
           }),
         });
       } catch (error) {
