@@ -227,7 +227,14 @@ function ReportsContent() {
       const name = statusById.get(task.statusId)?.name ?? "Unknown";
       counts.set(name, (counts.get(name) ?? 0) + 1);
     });
-    return Array.from(counts.entries()).map(([name, count]) => ({ name, count }));
+    const total = tasks.length;
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }, [statusById, tasks]);
 
   const currentSeries = useMemo(() => dailySeries.slice(rangeDays), [dailySeries, rangeDays]);
@@ -406,6 +413,7 @@ function ReportsContent() {
                     <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       Active status distribution
                     </h3>
+                    <p className="mt-2 text-xs text-muted-foreground">Sorted by task count with active share.</p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {activeStatusDistribution.length === 0 ? (
                         <span className="text-sm text-muted-foreground">No active tasks.</span>
@@ -415,7 +423,7 @@ function ReportsContent() {
                             key={item.name}
                             className="rounded-full border-border bg-muted px-3 py-1 text-xs font-semibold text-foreground"
                           >
-                            {item.name}: {item.count}
+                            {item.name}: {item.count} ({item.percentage}%)
                           </Badge>
                         ))
                       )}
