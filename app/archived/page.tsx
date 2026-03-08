@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RotateCcw, Search } from "lucide-react";
+import { Loader2, RotateCcw, Search } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 import TaskTrailShell from "@/components/TaskTrailShell";
 import PageHeader from "@/components/PageHeader";
@@ -20,6 +20,23 @@ import {
 import type { Task } from "@/lib/types";
 
 const PAGE_SIZE = 30;
+const DEFAULT_FILTERS = {
+  search: "",
+  statusId: "all",
+  archivedFrom: "",
+  archivedTo: "",
+};
+
+type ArchivedFilters = typeof DEFAULT_FILTERS;
+
+function isSameFilters(a: ArchivedFilters, b: ArchivedFilters) {
+  return (
+    a.search === b.search &&
+    a.statusId === b.statusId &&
+    a.archivedFrom === b.archivedFrom &&
+    a.archivedTo === b.archivedTo
+  );
+}
 
 function getMonthSectionLabel(value: string) {
   return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(new Date(value));
@@ -35,11 +52,8 @@ function ArchivedContent() {
     return localStorage.getItem("theme") === "dark" ? "dark" : "light";
   });
 
-  const [searchInput, setSearchInput] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [archivedFrom, setArchivedFrom] = useState("");
-  const [archivedTo, setArchivedTo] = useState("");
+  const [draftFilters, setDraftFilters] = useState<ArchivedFilters>(DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<ArchivedFilters>(DEFAULT_FILTERS);
 
   const [archivedTasks, setArchivedTasks] = useState<Task[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -56,13 +70,6 @@ function ArchivedContent() {
     () => statuses.find((status) => status.name.toLowerCase() === "inbox")?.id ?? null,
     [statuses]
   );
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setSearchTerm(searchInput.trim());
-    }, 250);
-    return () => window.clearTimeout(timeoutId);
-  }, [searchInput]);
 
   const applyTheme = (mode: ThemeMode) => {
     const root = document.documentElement;
@@ -92,10 +99,10 @@ function ArchivedContent() {
       const query: ArchivedTaskQuery = {
         page: targetPage,
         pageSize: PAGE_SIZE,
-        search: searchTerm || undefined,
-        statusId: statusFilter === "all" ? undefined : statusFilter,
-        archivedFrom: archivedFrom || undefined,
-        archivedTo: archivedTo || undefined,
+        search: appliedFilters.search.trim() || undefined,
+        statusId: appliedFilters.statusId === "all" ? undefined : appliedFilters.statusId,
+        archivedFrom: appliedFilters.archivedFrom || undefined,
+        archivedTo: appliedFilters.archivedTo || undefined,
         includeCount: !append,
       };
 
@@ -126,7 +133,7 @@ function ArchivedContent() {
         }
       }
     },
-    [archivedFrom, archivedTo, searchTerm, statusFilter]
+    [appliedFilters]
   );
 
   useEffect(() => {
@@ -151,6 +158,28 @@ function ArchivedContent() {
     });
     return sections;
   }, [archivedTasks]);
+
+  const hasPendingFilterChanges = useMemo(
+    () => !isSameFilters(draftFilters, appliedFilters),
+    [appliedFilters, draftFilters]
+  );
+
+  const hasActiveFilters = useMemo(
+    () => !isSameFilters(appliedFilters, DEFAULT_FILTERS),
+    [appliedFilters]
+  );
+
+  const handleApplyFilters = () => {
+    if (!hasPendingFilterChanges) {
+      return;
+    }
+    setAppliedFilters(draftFilters);
+  };
+
+  const clearFilters = () => {
+    setDraftFilters(DEFAULT_FILTERS);
+    setAppliedFilters(DEFAULT_FILTERS);
+  };
 
   const handleRestore = useCallback(
     async (taskId: string) => {
@@ -184,13 +213,6 @@ function ArchivedContent() {
     void loadPage(page + 1, true);
   };
 
-  const clearFilters = () => {
-    setSearchInput("");
-    setStatusFilter("all");
-    setArchivedFrom("");
-    setArchivedTo("");
-  };
-
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <Sidebar />
@@ -217,8 +239,8 @@ function ArchivedContent() {
                   <label className="relative block md:col-span-2 xl:col-span-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      value={searchInput}
-                      onChange={(event) => setSearchInput(event.target.value)}
+                      value={draftFilters.search}
+                      onChange={(event) => setDraftFilters((prev) => ({ ...prev, search: event.target.value }))}
                       placeholder="Search archived task title"
                       className="h-10 pl-9"
                     />
@@ -229,8 +251,8 @@ function ArchivedContent() {
                       Status
                     </span>
                     <select
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value)}
+                      value={draftFilters.statusId}
+                      onChange={(event) => setDraftFilters((prev) => ({ ...prev, statusId: event.target.value }))}
                       className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
                     >
                       <option value="all">All statuses</option>
@@ -248,8 +270,8 @@ function ArchivedContent() {
                     </span>
                     <Input
                       type="date"
-                      value={archivedFrom}
-                      onChange={(event) => setArchivedFrom(event.target.value)}
+                      value={draftFilters.archivedFrom}
+                      onChange={(event) => setDraftFilters((prev) => ({ ...prev, archivedFrom: event.target.value }))}
                       className="h-10"
                     />
                   </label>
@@ -260,15 +282,29 @@ function ArchivedContent() {
                     </span>
                     <Input
                       type="date"
-                      value={archivedTo}
-                      onChange={(event) => setArchivedTo(event.target.value)}
+                      value={draftFilters.archivedTo}
+                      onChange={(event) => setDraftFilters((prev) => ({ ...prev, archivedTo: event.target.value }))}
                       className="h-10"
                     />
                   </label>
 
-                  <div className="flex items-end md:col-span-2 xl:col-span-1">
-                    <Button type="button" variant="ghost" className="h-10 w-full" onClick={clearFilters}>
+                  <div className="flex items-end gap-2 md:col-span-2 xl:col-span-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-10 flex-1"
+                      onClick={clearFilters}
+                      disabled={isLoading || !hasActiveFilters}
+                    >
                       Reset
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-10 flex-1"
+                      onClick={handleApplyFilters}
+                      disabled={isLoading || !hasPendingFilterChanges}
+                    >
+                      Apply
                     </Button>
                   </div>
                 </div>
@@ -276,6 +312,12 @@ function ArchivedContent() {
                   <Badge className="rounded-full border-border bg-muted px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {totalCount} archived tasks
                   </Badge>
+                  {isLoading ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Loading...
+                    </span>
+                  ) : null}
                 </div>
               </Card>
 
