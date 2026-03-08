@@ -87,10 +87,12 @@ export async function ensureDefaultStatuses(): Promise<Status[]> {
       }
 
       const finalStatuses = didMutate ? await listStatuses() : statuses;
-      const orderMap = new Map(defaultStatuses.map((status) => [status.name.toLowerCase(), status.order]));
-      return finalStatuses
-        .filter((status) => orderMap.has(status.name.toLowerCase()))
-        .sort((a, b) => (orderMap.get(a.name.toLowerCase()) ?? a.order) - (orderMap.get(b.name.toLowerCase()) ?? b.order));
+      return [...finalStatuses].sort((a, b) => {
+        if (a.order === b.order) {
+          return a.createdAt.localeCompare(b.createdAt);
+        }
+        return a.order - b.order;
+      });
     }
 
   const client = getSupabaseClient();

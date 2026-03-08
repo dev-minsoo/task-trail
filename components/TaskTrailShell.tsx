@@ -61,26 +61,21 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
   };
 
   const normalizeTasks = async (loadedTasks: Task[], loadedStatuses: Status[]) => {
-    const allowedNames = new Set([
-      STATUS_INBOX.toLowerCase(),
-      STATUS_IN_PROGRESS.toLowerCase(),
-      STATUS_DONE.toLowerCase(),
-    ]);
-    const allowedStatuses = loadedStatuses.filter((status) => allowedNames.has(status.name.toLowerCase()));
-    const allowedIds = new Set(allowedStatuses.map((status) => status.id));
-    const fallbackStatusId = allowedStatuses.find((status) => status.name === STATUS_INBOX)?.id;
+    const knownStatusIds = new Set(loadedStatuses.map((status) => status.id));
+    const fallbackStatusId =
+      loadedStatuses.find((status) => status.name.toLowerCase() === STATUS_INBOX.toLowerCase())?.id;
 
     if (!fallbackStatusId) {
       return loadedTasks;
     }
 
-    const invalidTasks = loadedTasks.filter((task) => !allowedIds.has(task.statusId));
-    if (invalidTasks.length === 0) {
+    const orphanedTasks = loadedTasks.filter((task) => !knownStatusIds.has(task.statusId));
+    if (orphanedTasks.length === 0) {
       return loadedTasks;
     }
 
     await Promise.all(
-      invalidTasks.map((task) =>
+      orphanedTasks.map((task) =>
         updateTask(task.id, {
           statusId: fallbackStatusId,
           date: task.date,
@@ -89,7 +84,7 @@ export default function TaskTrailShell({ children }: { children: React.ReactNode
     );
 
     return loadedTasks.map((task) =>
-      allowedIds.has(task.statusId) ? task : { ...task, statusId: fallbackStatusId, date: task.date }
+      knownStatusIds.has(task.statusId) ? task : { ...task, statusId: fallbackStatusId, date: task.date }
     );
   };
 
