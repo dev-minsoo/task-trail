@@ -20,6 +20,12 @@ import {
 import type { Task } from "@/lib/types";
 
 const PAGE_SIZE = 30;
+const MONTH_SECTION_FORMATTER = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "long" });
+const ARCHIVED_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
 const DEFAULT_FILTERS = {
   search: "",
   statusId: "all",
@@ -38,8 +44,39 @@ function isSameFilters(a: ArchivedFilters, b: ArchivedFilters) {
   );
 }
 
+function parseDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
+}
+
+function getMonthSectionKey(value: string) {
+  const date = parseDate(value);
+  if (!date) {
+    return "unknown";
+  }
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function getMonthSectionLabel(value: string) {
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long" }).format(new Date(value));
+  const date = parseDate(value);
+  if (!date) {
+    return "Unknown date";
+  }
+  return MONTH_SECTION_FORMATTER.format(date);
+}
+
+function formatArchivedDate(value: string | null) {
+  const date = parseDate(value);
+  if (!date) {
+    return "Unknown";
+  }
+  return ARCHIVED_DATE_FORMATTER.format(date);
 }
 
 function ArchivedContent() {
@@ -144,7 +181,7 @@ function ArchivedContent() {
     const sections: Array<{ key: string; label: string; items: Task[] }> = [];
     const sectionMap = new Map<string, number>();
     archivedTasks.forEach((task) => {
-      const key = task.archivedAt ? task.archivedAt.slice(0, 7) : "unknown";
+      const key = task.archivedAt ? getMonthSectionKey(task.archivedAt) : "unknown";
       if (sectionMap.has(key)) {
         const index = sectionMap.get(key);
         if (index !== undefined) {
@@ -348,9 +385,7 @@ function ArchivedContent() {
                       <div className="space-y-3">
                         {section.items.map((task) => {
                           const statusName = statusById.get(task.statusId)?.name ?? "Unknown";
-                          const archivedDate = task.archivedAt
-                            ? new Date(task.archivedAt).toLocaleDateString()
-                            : "Unknown";
+                          const archivedDate = formatArchivedDate(task.archivedAt);
 
                           return (
                             <Card
@@ -358,7 +393,9 @@ function ArchivedContent() {
                               className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card/90 px-4 py-3"
                             >
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
+                                <p className="break-words text-sm font-medium text-foreground" title={task.title}>
+                                  {task.title}
+                                </p>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                   <Badge className="rounded-full border-border bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
                                     {statusName}
