@@ -9,7 +9,14 @@ import { createTask, createTasks, deleteTask, listTasks, updateTask } from "@/li
 import { createTaskStatusHistory } from "@/lib/supabase/status-history";
 import { getActiveContainerId, reorder } from "@/lib/dnd";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const today = () => formatLocalDate(new Date());
 const STATUS_INBOX = "Inbox";
 const STATUS_IN_PROGRESS = "In Progress";
 const STATUS_DONE = "Done";
