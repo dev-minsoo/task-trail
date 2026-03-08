@@ -359,17 +359,29 @@ function ReportsContent() {
                         const completedWidth =
                           maxDailyValue > 0 ? Math.round((point.completed / maxDailyValue) * 100) : 0;
                         return (
-                          <div key={point.key} className="grid grid-cols-[52px_1fr] items-center gap-3">
+                          <div key={point.key} className="grid grid-cols-[52px_1fr] items-start gap-3">
                             <span className="text-xs text-muted-foreground">{point.label}</span>
-                            <div className="space-y-1.5">
-                              <div className="h-2 rounded-full bg-muted">
-                                <div className="h-2 rounded-full bg-sky-500" style={{ width: `${createdWidth}%` }} />
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-16 text-[11px] text-muted-foreground">Created</span>
+                                <div className="h-2 flex-1 rounded-full bg-muted">
+                                  <div className="h-2 rounded-full bg-sky-500" style={{ width: `${createdWidth}%` }} />
+                                </div>
+                                <span className="w-8 text-right text-[11px] font-medium text-foreground">
+                                  {point.created}
+                                </span>
                               </div>
-                              <div className="h-2 rounded-full bg-muted">
-                                <div
-                                  className="h-2 rounded-full bg-emerald-500"
-                                  style={{ width: `${completedWidth}%` }}
-                                />
+                              <div className="flex items-center gap-2">
+                                <span className="w-16 text-[11px] text-muted-foreground">Completed</span>
+                                <div className="h-2 flex-1 rounded-full bg-muted">
+                                  <div
+                                    className="h-2 rounded-full bg-emerald-500"
+                                    style={{ width: `${completedWidth}%` }}
+                                  />
+                                </div>
+                                <span className="w-8 text-right text-[11px] font-medium text-foreground">
+                                  {point.completed}
+                                </span>
                               </div>
                             </div>
                           </div>
