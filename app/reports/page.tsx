@@ -24,6 +24,12 @@ type PeriodSummary = {
   completed: number;
 };
 
+const RANGE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
 function formatDateKey(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -144,6 +150,10 @@ function ReportsContent() {
   }, [dateRange.currentEnd, dateRange.previousStart]);
 
   const isLoading = isBootstrapping || isMetricsLoading;
+  const currentRangeLabel = useMemo(
+    () => `${RANGE_DATE_FORMATTER.format(dateRange.currentStart)} - ${RANGE_DATE_FORMATTER.format(dateRange.currentEnd)}`,
+    [dateRange.currentEnd, dateRange.currentStart]
+  );
 
   const dailySeries = useMemo<DailyPoint[]>(() => {
     const createdCounts = new Map<string, number>();
@@ -261,6 +271,9 @@ function ReportsContent() {
                 >
                   Last 30 days
                 </Button>
+                <Badge className="rounded-full border-border bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+                  Current range: {currentRangeLabel}
+                </Badge>
               </div>
 
               {errorMessage ? (
@@ -283,7 +296,7 @@ function ReportsContent() {
                       </div>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{createdInRange}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {rangeDays}-day window ({createdDelta} vs previous)
+                        {currentRangeLabel} ({createdDelta} vs previous window)
                       </p>
                     </Card>
 
@@ -294,7 +307,7 @@ function ReportsContent() {
                       </div>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{completedInRange}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {rangeDays}-day window ({completedDelta} vs previous)
+                        {currentRangeLabel} ({completedDelta} vs previous window)
                       </p>
                     </Card>
 
@@ -305,7 +318,7 @@ function ReportsContent() {
                       </div>
                       <p className="mt-3 text-2xl font-semibold text-foreground">{completionRate}%</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        completed / created ({completionRateDelta}pt vs previous)
+                        {currentRangeLabel} ({completionRateDelta}pt vs previous window)
                       </p>
                     </Card>
 
@@ -326,7 +339,7 @@ function ReportsContent() {
                           Throughput trend
                         </h3>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Created vs completed tasks per day
+                          Created vs completed tasks per day for {currentRangeLabel}
                         </p>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
