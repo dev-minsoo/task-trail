@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Task Trail banner" width="100%" />
+  <img src="docs/banner.png" alt="Task Trail banner" width="100%" />
 </p>
 
 <h1 align="center">Task Trail</h1>
