@@ -1,44 +1,65 @@
-# Task Trail
+<p align="center">
+  <img src="docs/banner.svg" alt="Task Trail banner" width="100%" />
+</p>
 
-Task Trail is a personal checklist app with date-based task views, a lightweight kanban board, customizable statuses, and AI-assisted task suggestions.
+<h1 align="center">Task Trail</h1>
 
-## Features
+<p align="center">
+  Personal task manager with date-based checklists, kanban movement, archive recovery, and throughput reporting.
+</p>
 
-- Inbox / In Progress / Done checklist flow
-- Kanban board with drag-and-drop
-- Archived task search with restore
-- Throughput reports (7-day / 30-day)
-- AI task suggestion (optional)
+<p align="center">
+  <a href="#installation"><img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black?logo=next.js"></a>
+  <a href="#installation"><img alt="Supabase" src="https://img.shields.io/badge/Supabase-Postgres-3ECF8E?logo=supabase&logoColor=white"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+</p>
 
-## Tech Stack
+<p align="center">
+  <code>npm install && npm run dev</code>
+</p>
 
-- Next.js (App Router)
-- Supabase (Postgres)
-- Tailwind CSS
+Task Trail keeps daily capture, status movement, archive lookup, and lightweight reporting in one workflow.
 
-## Getting Started
+## At a Glance
 
-Install dependencies:
+- Date-based checklist flow with Inbox, In Progress, and Done states
+- Kanban board and archive restore/search for moving between current and past work
+- Throughput reporting plus optional AI parsing for turning free text into tasks
+
+## Why Task Trail
+
+- Daily work and longer-running tasks live in the same model
+- Status history and reporting are built around actual execution flow, not just storage
+- The app stays lightweight enough for personal use while still exposing useful review data
+
+## Core Features
+
+- Date-based task capture
+- Custom statuses with seeded defaults
+- Drag-and-drop kanban board
+- Archived task search and restore
+- 7-day / 30-day throughput reports
+- Optional AI-assisted task parsing
+
+## Installation
+
+### Requirements
+
+- Node.js 18+
+- A Supabase project
+
+### Local Setup
 
 ```bash
 npm install
-```
-
-Run the dev server:
-
-```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open `http://localhost:3000`.
 
-## Supabase Setup
+### Environment Variables
 
-1. Create a Supabase project.
-2. Go to **Settings → API** and copy:
-   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public key` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-3. Add the values to `.env.local`:
+Create `.env.local`:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -47,7 +68,11 @@ OPENAI_API_KEY=sk-your-openai-key
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-4. Create tables in **SQL Editor** (or apply equivalent migrations):
+Leave `OPENAI_API_KEY` empty if you do not want AI parsing.
+
+### Database Setup
+
+Create the tables shown below in Supabase SQL Editor:
 
 ```sql
 create table if not exists statuses (
@@ -78,44 +103,42 @@ create table if not exists task_status_history (
   to_status_id uuid not null references statuses(id),
   changed_at timestamptz not null default now()
 );
-
-create index if not exists tasks_date_idx on tasks(date);
-create index if not exists tasks_status_idx on tasks(status_id);
-create index if not exists tasks_archived_archived_at_idx on tasks(archived_at desc) where is_archived = true;
-create index if not exists tasks_archived_status_archived_at_idx on tasks(status_id, archived_at desc) where is_archived = true;
-create index if not exists tasks_created_at_idx on tasks(created_at);
-create index if not exists tasks_completed_at_idx on tasks(completed_at) where completed_at is not null;
-create index if not exists task_status_history_task_id_idx on task_status_history(task_id);
-create index if not exists task_status_history_changed_at_idx on task_status_history(changed_at);
 ```
 
-The app auto-seeds default statuses (`Inbox`, `In Progress`, `Done`) when the table is empty.
+Optional archival automation is available in `supabase/migrations/20260125_archive_done_tasks.sql`.
 
-5. (Optional) Enable automatic archival of done tasks after 14 days:
-   - run `supabase/migrations/20260125_archive_done_tasks.sql`
-   - requires `pg_cron` support in your Postgres environment
+## Usage
 
-## AI Suggestions
+- Capture tasks for a specific day
+- Move work across Inbox, In Progress, and Done
+- Restore archived work when context returns
+- Review recent throughput in the reports view
+- Use AI parsing to turn rough notes into task candidates
 
-Set `OPENAI_API_KEY` in `.env.local` to enable AI task suggestions. Leave it blank if you do not plan to use AI features.
+## Deploy
 
-## Deploy to Vercel
+```bash
+npm run build
+```
 
-1. Push your repo to GitHub.
-2. Import the project in Vercel.
-3. Add the same environment variables in Vercel:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `OPENAI_API_KEY` (optional)
-   - `OPENAI_MODEL` (optional, default: `gpt-4.1-mini`)
-4. Deploy.
+For Vercel, add the same environment variables used locally.
 
-## AI 502 Troubleshooting
+## Contributing
 
-If `/api/ai/parse` returns `502` in older versions, it usually means the upstream OpenAI request failed (invalid key, model access, quota, or temporary API issues).
+Before opening a PR:
 
-Current behavior falls back to non-AI parsing instead of hard-failing, but you should still verify:
+```bash
+npm run lint
+npm run build
+```
 
-- `OPENAI_API_KEY` is valid in Vercel project settings.
-- `OPENAI_MODEL` is available for your key.
-- Vercel Function logs for `/api/ai/parse` show no repeated upstream auth/quota errors.
+If AI parsing behavior changes, verify both the AI path and the fallback path.
+
+Issue reports should include:
+
+- Browser and OS
+- Reproduction steps
+- Expected vs actual behavior
+- Relevant Supabase setup details with secrets removed
+
+Recommended commit prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
