@@ -27,8 +27,11 @@
   <path d="M514 246L538 270L592 216" stroke="#A78BFA" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
   <rect x="776" y="64" width="550" height="292" rx="32" fill="url(#accent)"/>
   <text x="800" y="152" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="60" font-weight="700">Task Trail</text>
-  <text x="802" y="194" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="22">Checklist, kanban, archive, and throughput in one workflow</text>
-  <rect x="802" y="238" width="238" height="42" rx="21" fill="#111827" stroke="#475569"/>
-  <text x="828" y="265" fill="#DDD6FE" font-family="Menlo, monospace" font-size="17">npm install &amp;&amp; npm run dev</text>
-  <text x="802" y="316" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">Inbox  •  In Progress  •  Done  •  Reports</text>
+  <text x="802" y="194" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="20">
+    <tspan x="802" dy="0">Checklist, kanban, archive, and</tspan>
+    <tspan x="802" dy="28">throughput in one workflow</tspan>
+  </text>
+  <rect x="802" y="248" width="292" height="42" rx="21" fill="#111827" stroke="#475569"/>
+  <text x="828" y="275" fill="#DDD6FE" font-family="Menlo, monospace" font-size="16">npm install &amp;&amp; npm run dev</text>
+  <text x="802" y="326" fill="#94A3B8" font-family="Arial, sans-serif" font-size="18">Inbox  •  In Progress  •  Done  •  Reports</text>
 </svg>
